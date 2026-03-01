@@ -1,5 +1,5 @@
 """
-RSS Feed Monitor — Fetches and filters World Cup 2026 stories from major sports RSS feeds.
+RSS Feed Monitor — Fetches and filters Agricultural stories from major Indian news feeds.
 """
 import feedparser
 import hashlib
@@ -21,7 +21,7 @@ def _normalize(text):
 
 
 def _matches_keywords(text, keywords=None):
-    """Check if text matches any World Cup related keywords."""
+    """Check if text matches any Agricultural related keywords."""
     if keywords is None:
         keywords = config.ALL_KEYWORDS
     normalized = _normalize(text)
@@ -39,13 +39,9 @@ def _hash_story(title, url):
 
 def fetch_rss_stories():
     """
-    Fetch stories from all configured RSS feeds.
-    In GENERAL_FOOTBALL_MODE, football-only feeds pass all stories.
-    Other feeds still use keyword filtering.
+    Fetch stories from all configured RSS feeds and filter for Agricultural relevance.
     """
     stories = []
-    general_mode = getattr(config, "GENERAL_FOOTBALL_MODE", False)
-    football_feeds = getattr(config, "FOOTBALL_ONLY_FEEDS", [])
 
     for feed_name, feed_url in config.RSS_FEEDS.items():
         try:
@@ -64,14 +60,9 @@ def fetch_rss_stories():
                 summary = entry.get("summary", entry.get("description", ""))
                 link = entry.get("link", "")
 
-                if is_football_feed:
-                    # Accept all stories from football-only feeds
-                    is_match = True
-                    matched_keyword = "general_football"
-                else:
-                    # Check if this story matches keywords
-                    combined_text = f"{title} {summary}"
-                    is_match, matched_keyword = _matches_keywords(combined_text)
+                # Check if this story matches keywords
+                combined_text = f"{title} {summary}"
+                is_match, matched_keyword = _matches_keywords(combined_text)
 
                 if is_match:
                     # Parse published date
@@ -113,9 +104,9 @@ def fetch_rss_stories():
         filtered.append(story)
 
     if excluded_count > 0:
-        logger.info(f"RSS Monitor: Excluded {excluded_count} irrelevant stories (cricket/rugby/etc.)")
+        logger.info(f"RSS Monitor: Excluded {excluded_count} irrelevant stories (sports/celebrity/etc.)")
 
-    logger.info(f"RSS Monitor: Found {len(filtered)} football stories across {len(config.RSS_FEEDS)} feeds")
+    logger.info(f"RSS Monitor: Found {len(filtered)} agricultural stories across {len(config.RSS_FEEDS)} feeds")
     return filtered
 
 

@@ -146,7 +146,7 @@ def run_scan():
                 "story_hash": f"rt_{rt['keyword'][:20].replace(' ', '_')}",
                 "is_rising": True,
             })
-        logger.info(f"   Real-time: {len(realtime)} WC-related trends")
+        logger.info(f"   Real-time: {len(realtime)} agri-related trends")
     except Exception as e:
         logger.error(f"Real-time Trends failed: {e}")
 
@@ -570,7 +570,7 @@ def test_all_connections():
     ok, name = test_connection()
     if ok:
         print(f"   ✅ Connected as @{name}")
-        mid = send_simple_message("🧪 Connection test successful! Your FIFA News Agent is ready.")
+        mid = send_simple_message("🧪 Connection test successful! Your Kisan Portal Agent is ready.")
         print(f"   ✅ Test message sent (ID: {mid})")
     else:
         print("   ❌ FAILED — Check TELEGRAM_BOT_TOKEN in .env")
@@ -580,7 +580,7 @@ def test_all_connections():
     try:
         from newsapi import NewsApiClient
         newsapi = NewsApiClient(api_key=config.NEWS_API_KEY)
-        result = newsapi.get_top_headlines(q="football", language="en", page_size=1)
+        result = newsapi.get_top_headlines(q="agriculture", language="en", page_size=1)
         if result.get("status") == "ok":
             print(f"   ✅ Connected — {result.get('totalResults', 0)} results available")
         else:

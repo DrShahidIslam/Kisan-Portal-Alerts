@@ -1,5 +1,5 @@
 """
-Source Fetcher — Downloads and extracts clean text from news article URLs.
+Source Fetcher — Downloads and eExtracts full text and metadata from agricultural news URLs.
 Used to gather factual information before generating AI articles.
 """
 import logging

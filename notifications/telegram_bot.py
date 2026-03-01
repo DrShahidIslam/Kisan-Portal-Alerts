@@ -390,7 +390,7 @@ if __name__ == "__main__":
         print(f"✅ Bot connected: @{name}")
 
         # Send a test message
-        mid = send_simple_message("🤖 FIFA News Agent is online! This is a test message.")
+        mid = send_simple_message(f"🧪 Connection test successful! @{name} is ready for Kisan Portal.")
         if mid:
             print(f"✅ Test message sent (ID: {mid})")
         else:
