@@ -580,6 +580,11 @@ def run_listen_loop():
 
 def test_all_connections():
     """Test all API connections and report status."""
+    # Ensure stdout can print emojis on Windows (avoid UnicodeEncodeError)
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, OSError):
+        pass
     print("🔍 Testing all connections...\n")
 
     # Telegram
