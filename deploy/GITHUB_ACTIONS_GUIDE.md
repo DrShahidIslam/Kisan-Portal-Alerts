@@ -21,8 +21,8 @@
 
 | Field | What to enter |
 |-------|--------------|
-| **Repository name** | `fifa-news-agent` |
-| **Description** | `Automated FIFA World Cup 2026 news tracker` |
+| **Repository name** | `kisan-portal-alerts` |
+| **Description** | `Automated Indian Agriculture news and scheme tracker` |
 | **Visibility** | **Public** (required for free GitHub Actions minutes) |
 
 3. Do NOT check "Add a README file"
@@ -51,7 +51,7 @@ Click **"New repository secret"** for each of these (7 total):
 | `TELEGRAM_CHAT_ID` | Your Telegram chat ID |
 | `NEWS_API_KEY` | Your NewsAPI key |
 | `GEMINI_API_KEY` | Your Gemini API key |
-| `WP_URL` | `https://fifa-worldcup26.com` |
+| `WP_URL` | `https://kisanportal.org` |
 | `WP_USERNAME` | Your WordPress username |
 | `WP_APP_PASSWORD` | Your WordPress app password |
 
@@ -75,7 +75,7 @@ For each one:
 Open **PowerShell** and run these commands one by one:
 
 ```powershell
-cd "G:\Fifa Alerts App"
+cd "G:\Kisan Portal Alerts App"
 ```
 
 ```powershell
@@ -87,13 +87,13 @@ git add .
 ```
 
 ```powershell
-git commit -m "Initial commit - FIFA News Agent"
+git commit -m "Initial commit - Kisan Portal Alerts Agent"
 ```
 
 Now connect to your GitHub repo (replace YOUR_USERNAME with your GitHub username):
 
 ```powershell
-git remote add origin https://github.com/YOUR_USERNAME/fifa-news-agent.git
+git remote add origin https://github.com/YOUR_USERNAME/kisan-portal-alerts.git
 ```
 
 ```powershell
@@ -113,10 +113,10 @@ git push -u origin main
 ### Step 5.1 — Check the Actions tab
 1. Go to your repo on GitHub: `https://github.com/YOUR_USERNAME/fifa-news-agent`
 2. Click the **Actions** tab (near the top)
-3. You should see **"FIFA News Agent - Scan"** listed
+3. You should see **"Kisan Portal Agent - Scan"** listed
 
 ### Step 5.2 — Run it manually for the first time
-1. Click on **"FIFA News Agent - Scan"** (the workflow name)
+1. Click on **"Kisan Portal Agent - Scan"** (the workflow name)
 2. Click the **"Run workflow"** dropdown button (right side)
 3. Click the green **"Run workflow"** button
 4. Wait about 1-2 minutes → refresh the page
@@ -144,7 +144,7 @@ The agent will now **automatically run every 30 minutes**, 24/7, for free.
 |------|------------------|
 | See all runs | GitHub → Actions tab |
 | See logs of a run | Click on any run → click "scan" → expand steps |
-| Run manually | Actions → "FIFA News Agent - Scan" → "Run workflow" |
+| Run manually | Actions → "Kisan Portal Agent - Scan" → "Run workflow" |
 | Disable the agent | Actions → click workflow → three dots (...) → "Disable workflow" |
 | Re-enable | Same place → "Enable workflow" |
 
@@ -152,7 +152,7 @@ The agent will now **automatically run every 30 minutes**, 24/7, for free.
 When you change any file:
 
 ```powershell
-cd "G:\Fifa Alerts App"
+cd "G:\Kisan Portal Alerts App"
 git add .
 git commit -m "Updated scan logic"
 git push
