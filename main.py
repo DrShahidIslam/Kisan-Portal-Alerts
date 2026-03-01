@@ -43,13 +43,13 @@ _pending_article = None   # Article awaiting approval
 _pending_image_path = None  # Featured image awaiting approval
 _update_offset = None     # Telegram getUpdates offset
 _gemini_quota_exhausted = False  # Set True when Gemini daily quota is hit
-_article_attempted_this_run = False  # Limit to one article generation per --once run
 
 def save_pending_state():
-    """Save pending article and image path to disk for cross-run persistence."""
+    """Save pending article, image path, and telegram offset to disk."""
     state = {
         "article": _pending_article,
-        "image_path": _pending_image_path
+        "image_path": _pending_image_path,
+        "update_offset": _update_offset
     }
     try:
         with open("pending_state.json", "w", encoding="utf-8") as f:
@@ -58,16 +58,15 @@ def save_pending_state():
         logger.error(f"Failed to save pending state: {e}")
 
 def load_pending_state():
-    """Load pending article and image path from disk."""
-    global _pending_article, _pending_image_path
-    if _pending_article:
-        return True
+    """Load pending article, image path, and telegram offset from disk."""
+    global _pending_article, _pending_image_path, _update_offset
     try:
         if os.path.exists("pending_state.json"):
             with open("pending_state.json", "r", encoding="utf-8") as f:
                 state = json.load(f)
                 _pending_article = state.get("article")
                 _pending_image_path = state.get("image_path")
+                _update_offset = state.get("update_offset")
                 return bool(_pending_article)
     except Exception as e:
         logger.error(f"Failed to load pending state: {e}")
@@ -242,6 +241,7 @@ def check_and_handle_commands():
 
     for update in updates:
         _update_offset = update["update_id"] + 1
+        save_pending_state()
 
         # Handle inline button callback
         callback = update.get("callback_query")
@@ -309,12 +309,6 @@ def _handle_write_article(topic_hash=None):
     """Generate an article for a specific topic, or the most recent one if no hash provided."""
     global _pending_article, _latest_topics, _gemini_quota_exhausted, _article_attempted_this_run
 
-    # Only allow one article generation attempt per --once run
-    # This prevents multiple stale callbacks from triggering repeated failures
-    if _article_attempted_this_run:
-        logger.info("⏭️ Skipping duplicate write_article — already attempted this run")
-        return
-
     # Don't attempt generation if we already know the quota is exhausted
     if _gemini_quota_exhausted:
         logger.info("⏸️ Skipping article generation — Gemini quota exhausted this cycle")
@@ -374,12 +368,10 @@ def _handle_write_article(topic_hash=None):
                     logger.error(f"Error reading last topic from DB: {e}")
 
     if not topic:
-        send_simple_message("⚠️ No trending topics found in memory or database. Wait for the next scan.")
+        send_simple_message("⚠️ Could not find topic details for this request. It might be too old or the cache was cleared.")
         return
 
-    _article_attempted_this_run = True  # Mark as attempted before trying
-
-    logger.info(f"📝 Generating article for: {topic['topic']}")
+    logger.info(f"📝 Generating article for: {topic.get('topic', 'Unknown')}")
 
     send_generating_status(topic["topic"])
 
@@ -660,6 +652,9 @@ if __name__ == "__main__":
         run_listen_loop()
     elif args.once:
         logger.info("Running single scan and processing commands...")
+
+        # 0. Load state including telegram offset
+        load_pending_state()
 
         # 1. Check for pending commands from previous runs
         try:
