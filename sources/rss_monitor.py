@@ -46,20 +46,29 @@ def fetch_rss_stories():
     for feed_name, feed_url in config.RSS_FEEDS.items():
         try:
             logger.info(f"Fetching RSS: {feed_name}")
-            feed = feedparser.parse(feed_url)
+            feed = feedparser.parse(
+                feed_url,
+                agent="KisanPortalAgent/1.0 (RSS; +https://kisanportal.org)",
+                request_headers={"Accept": "application/rss+xml, application/xml, text/xml, */*"},
+            )
 
             if feed.bozo and not feed.entries:
                 logger.warning(f"RSS feed error for {feed_name}: {feed.bozo_exception}")
                 continue
+
+            # Agri-only feeds: accept all entries (still apply exclusion filter later). Others: require keyword match.
+            is_agri_only_feed = getattr(config, "AGRI_ONLY_FEEDS", []) and feed_name in getattr(config, "AGRI_ONLY_FEEDS", [])
 
             for entry in feed.entries[:30]:  # Check latest 30 entries
                 title = entry.get("title", "")
                 summary = entry.get("summary", entry.get("description", ""))
                 link = entry.get("link", "")
 
-                # Check if this story matches keywords
                 combined_text = f"{title} {summary}"
-                is_match, matched_keyword = _matches_keywords(combined_text)
+                if is_agri_only_feed:
+                    is_match, matched_keyword = True, "agriculture"
+                else:
+                    is_match, matched_keyword = _matches_keywords(combined_text)
 
                 if is_match:
                     # Parse published date

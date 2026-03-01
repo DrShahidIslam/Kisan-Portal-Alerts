@@ -21,14 +21,21 @@ WP_USERNAME = os.getenv("WP_USERNAME")
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD")
 
 # ── RSS Feeds ─────────────────────────────────────────────────────────
+# Use active, working feeds. Feeds in AGRI_ONLY_FEEDS below: accept all entries (no keyword filter).
 RSS_FEEDS = {
-    "PIB Agriculture": "https://pib.gov.in/RssMain.aspx?ModId=6&LangId=1",
-    "ICAR News": "https://icar.org.in/rss.xml",
-    "Krishi Jagran": "https://krishijagran.com/rss/news/",
-    "AgriNews India": "http://www.agrinews.in/rss",
-    "Financial Express Agri": "https://www.financialexpress.com/industry/agriculture/feed/",
+    "Rural Voice (Latest)": "https://eng.ruralvoice.in/rss/latest-posts",
+    "Rural Voice (National)": "https://eng.ruralvoice.in/rss/category/national",
+    "Rural Voice (Agribusiness)": "https://eng.ruralvoice.in/rss/category/agribusiness",
+    "PIB Press Releases": "https://pib.gov.in/RssMain.aspx?ModId=6&LangId=1",
+    "Krishi Jagran": "https://krishijagran.com/feed/",
+    "Financial Express Industry": "https://www.financialexpress.com/industry/feed/",
     "The Hindu Agriculture": "https://www.thehindu.com/sci-tech/agriculture/feeder/default.rss",
 }
+# Feeds that are 100% agriculture — accept every entry (still apply EXCLUDE_KEYWORDS). Ensures RSS shows in alerts.
+AGRI_ONLY_FEEDS = [
+    "Rural Voice (Latest)", "Rural Voice (National)", "Rural Voice (Agribusiness)",
+    "PIB Press Releases", "Krishi Jagran", "Financial Express Industry", "The Hindu Agriculture",
+]
 
 # ── Keyword Watchlists ────────────────────────────────────────────────
 # Central Government Schemes
