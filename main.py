@@ -1,8 +1,8 @@
 """
-FIFA World Cup 2026 News Agent — Main Entry Point
+Kisan Portal Alerts Agent — Main Entry Point
 
 Orchestrates the detection → notification → writing → publishing pipeline.
-Runs on a configurable schedule (default: every 30 minutes).
+Runs on a configurable schedule (default: every 60 minutes).
 
 Usage:
     python main.py              # Run the agent loop
@@ -85,7 +85,7 @@ logging.basicConfig(
         ),
     ]
 )
-logger = logging.getLogger("FIFANewsAgent")
+logger = logging.getLogger("KisanPortalAgent")
 
 
 def run_scan():
@@ -137,7 +137,7 @@ def run_scan():
         for rt in realtime:
             all_stories.append({
                 "title": f"Trending: {rt['keyword']}",
-                "summary": f"'{rt['keyword']}' is currently trending on Google in the USA",
+                "summary": f"'{rt['keyword']}' is currently trending on Google in India",
                 "url": f"https://trends.google.com/trends/explore?q={rt['keyword'].replace(' ', '+')}",
                 "source": "Google Trending",
                 "source_type": "realtime_trends",

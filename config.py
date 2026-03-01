@@ -1,5 +1,5 @@
 """
-Central configuration for the FIFA World Cup 2026 News Agent.
+Central configuration for the Kisan Portal Alerts App.
 All settings, keywords, RSS feeds, and thresholds are defined here.
 """
 import os
