@@ -62,7 +62,7 @@ GENERAL_AGRI_KEYWORDS = [
 # Exclusion keywords — stories/trends containing these are discarded
 EXCLUDE_KEYWORDS = [
     # Sports
-    "football", "soccer", "fifa", "world cup", "wc 2026",
+    "football", "soccer", "world cup",
     "cricket", "t20", "ipl", "odi", "test match",
     "icc", "wpl", "tennis", "rugby", "f1", "golf",
     # Entertainment/Politics (non-agri)
@@ -93,6 +93,11 @@ WP_DEFAULT_STATUS = "draft"     # 'draft', 'pending', or 'publish'
 ARTICLE_MIN_WORDS = 800
 ARTICLE_MAX_WORDS = 1500
 GEMINI_MODEL = "gemini-2.5-flash"
+IMAGEN_MODEL = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
+# Set to True to skip AI image generation (saves quota; article publishes without featured image)
+SKIP_AI_IMAGE = os.getenv("SKIP_AI_IMAGE", "false").lower() in ("true", "1", "yes")
+# Imagen is paid-only; set True only if you have a paid Gemini plan. Free tier uses Gemini Flash → source → Pollinations → placeholder.
+USE_GEMINI_IMAGEN = os.getenv("USE_GEMINI_IMAGEN", "false").lower() in ("true", "1", "yes")
 
 # ── Logging ───────────────────────────────────────────────────────────
 LOG_FILE = "agent.log"

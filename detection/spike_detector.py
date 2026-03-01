@@ -143,7 +143,7 @@ def detect_spikes(all_stories, trends_data=None):
     Returns a list of dicts:
     [
         {
-            "topic": "Italy qualifies for World Cup 2026",
+            "topic": "PM Kisan 17th instalment released for farmers",
             "score": 85.0,
             "factors": ["3 sources", "trending on Google", "< 2h old"],
             "stories": [...],
@@ -251,22 +251,22 @@ if __name__ == "__main__":
     # Test with some fake stories
     test_stories = [
         {
-            "title": "Italy defeats Northern Ireland 2-0 in World Cup qualifier",
-            "summary": "Italy has taken a major step toward World Cup 2026 qualification",
-            "url": "https://espn.com/test1",
-            "source": "ESPN",
+            "title": "PM Kisan 17th instalment: Centre releases Rs 20,000 cr to 9.3 cr farmers",
+            "summary": "The government has released the 17th instalment under PM-Kisan Samman Nidhi",
+            "url": "https://example.com/pm-kisan-17",
+            "source": "PIB Agriculture",
             "source_type": "rss",
-            "matched_keyword": "italy",
+            "matched_keyword": "PM Kisan",
             "published_at": datetime.utcnow(),
             "story_hash": "test_hash_1",
         },
         {
-            "title": "Italy World Cup qualification: Northern Ireland beaten in playoff",
-            "summary": "Italy are through to the World Cup 2026 playoff final",
-            "url": "https://bbc.com/test2",
-            "source": "BBC Sport",
+            "title": "PM Kisan instalment: How to check status and eKYC",
+            "summary": "Farmers can check PM-Kisan 17th instalment status on the official portal",
+            "url": "https://example.com/pm-kisan-status",
+            "source": "Krishi Jagran",
             "source_type": "rss",
-            "matched_keyword": "italy",
+            "matched_keyword": "PM Kisan",
             "published_at": datetime.utcnow(),
             "story_hash": "test_hash_2",
         },

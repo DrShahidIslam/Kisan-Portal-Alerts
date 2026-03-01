@@ -1,9 +1,9 @@
 name: Kisan Portal Agent - Scan
 
 on:
-  # Run every 30 minutes
+  # Run every 45 minutes (fits free tier, gives time to review alerts)
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/45 * * * *'
 
   # Also allow manual trigger from GitHub UI
   workflow_dispatch:
@@ -11,7 +11,7 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -26,17 +26,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Restore agent database
+      - name: Restore agent state
         uses: actions/cache@v4
         with:
           path: |
             agent.db
             pending_state.json
             latest_topics.json
-          key: agent-db-${{ hashFiles('config.py') }}-week-${{ github.run_number }}
+          key: kisan-agent-${{ hashFiles('config.py') }}-v2
           restore-keys: |
-            agent-db-${{ hashFiles('config.py') }}-week-
-            agent-db-
+            kisan-agent-${{ hashFiles('config.py') }}-
+            kisan-agent-
 
       - name: Run news scan and handle commands
         env:

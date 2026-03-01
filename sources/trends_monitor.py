@@ -134,11 +134,12 @@ def get_realtime_trending():
 
         if trending is not None and not trending.empty:
             for _, row in trending.iterrows():
+                query = str(row[0])
                 # Check if this trending query is Agriculture related
                 for kw in config.ALL_KEYWORDS:
                     if kw.lower() in query or any(word in query for word in kw.lower().split()):
                         realtime_trends.append({
-                            "keyword": str(row[0]),
+                            "keyword": query,
                             "source": "google_trending",
                             "source_type": "realtime_trends",
                             "is_rising": True,

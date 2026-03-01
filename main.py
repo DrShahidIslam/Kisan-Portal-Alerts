@@ -43,6 +43,7 @@ _pending_article = None   # Article awaiting approval
 _pending_image_path = None  # Featured image awaiting approval
 _update_offset = None     # Telegram getUpdates offset
 _gemini_quota_exhausted = False  # Set True when Gemini daily quota is hit
+_article_attempted_this_run = False  # Limit one article generation per --once run (avoids duplicate failures)
 
 def save_pending_state():
     """Save pending article, image path, and telegram offset to disk."""
@@ -67,6 +68,9 @@ def load_pending_state():
                 _pending_article = state.get("article")
                 _pending_image_path = state.get("image_path")
                 _update_offset = state.get("update_offset")
+                # Image file may not persist across runs (e.g. GitHub Actions); clear if missing
+                if _pending_image_path and not os.path.exists(_pending_image_path):
+                    _pending_image_path = None
                 return bool(_pending_article)
     except Exception as e:
         logger.error(f"Failed to load pending state: {e}")
@@ -251,7 +255,7 @@ def check_and_handle_commands():
             logger.info(f"📱 Received callback: {data}")
 
             if data.startswith("write_"):
-                answer_callback_query(callback_id, "✍️ Generating article...")
+                answer_callback_query(callback_id, "✍️ Processing request...")
                 if data == "write_article":
                     topic_hash = None
                 else:
@@ -309,15 +313,25 @@ def _handle_write_article(topic_hash=None):
     """Generate an article for a specific topic, or the most recent one if no hash provided."""
     global _pending_article, _latest_topics, _gemini_quota_exhausted, _article_attempted_this_run
 
-    # Don't attempt generation if we already know the quota is exhausted
+    # Only allow one article generation attempt per --once run (avoids multiple stale callbacks)
+    if _article_attempted_this_run:
+        logger.info("⏭️ Skipping duplicate write_article — already attempted this run")
+        send_simple_message("✍️ An article generation is already in progress or was just attempted. Please wait a moment.")
+        return
+
     if _gemini_quota_exhausted:
         logger.info("⏸️ Skipping article generation — Gemini quota exhausted this cycle")
         send_simple_message("⏸️ Gemini API quota exhausted. Article generation paused until next cycle.")
         return
 
+    # Don't start a new one if an article is already pending review
+    if _pending_article or load_pending_state():
+        send_simple_message(f"⚠️ An article is already pending review: '{(_pending_article or {}).get('title', 'Unknown')}'\n\nPlease ✅ Approve or 🗑️ Reject it before generating a new one.")
+        return
+
     topic = None
     
-    # Prioritize loading the specific topic requested via Telegram callback
+    # Prioritize loading the specific topic requested via Telegram callback (supports older alerts)
     if topic_hash:
         try:
             conn = get_connection()
@@ -325,6 +339,10 @@ def _handle_write_article(topic_hash=None):
             conn.close()
             if topic:
                 logger.info(f"Loaded specific topic {topic_hash} from cache.")
+            else:
+                logger.warning(f"Topic hash {topic_hash} not found in cache.")
+                send_simple_message("⚠️ This alert is too old (cache expired) or the topic record is no longer available.")
+                return
         except Exception as e:
             logger.error(f"Error loading topic {topic_hash} from cache: {e}")
 
@@ -368,8 +386,10 @@ def _handle_write_article(topic_hash=None):
                     logger.error(f"Error reading last topic from DB: {e}")
 
     if not topic:
-        send_simple_message("⚠️ Could not find topic details for this request. It might be too old or the cache was cleared.")
+        send_simple_message("⚠️ No trending topics found in memory or database. Wait for the next scan.")
         return
+
+    _article_attempted_this_run = True
 
     logger.info(f"📝 Generating article for: {topic.get('topic', 'Unknown')}")
 
@@ -378,12 +398,17 @@ def _handle_write_article(topic_hash=None):
     try:
         article = generate_article(topic)
         if article:
+            article["matched_keyword"] = topic.get("matched_keyword", "")  # For RankMath focus keyword
+            article["source_url"] = topic.get("top_url") or (topic.get("stories") or [{}])[0].get("url") or ""
             _pending_article = article
             send_article_preview(article)
             logger.info(f"✅ Article preview sent: {article['title']}")
             save_pending_state()
-            # Auto-generate featured image after article is ready
-            _generate_and_preview_image(article.get("title", ""))
+            # Auto-generate featured image (Gemini Flash → source image → Pollinations → Imagen → placeholder)
+            if not getattr(config, "SKIP_AI_IMAGE", False):
+                _generate_and_preview_image(article.get("title", ""), article.get("source_url"))
+            else:
+                send_simple_message("🖼️ Image skipped (SKIP_AI_IMAGE=enabled). You can approve the article without a featured image.")
         else:
             send_simple_message("❌ Article generation failed. Try again later.")
     except Exception as e:
@@ -397,7 +422,7 @@ def _handle_write_article(topic_hash=None):
             send_simple_message(f"❌ Error generating article: {error_str[:200]}")
 
 
-def _generate_and_preview_image(article_title):
+def _generate_and_preview_image(article_title, source_url=None):
     """Generate a featured image and send it to Telegram for approval."""
     global _pending_image_path
 
@@ -407,7 +432,7 @@ def _generate_and_preview_image(article_title):
     send_simple_message("🎨 Generating featured image... This may take a moment.")
 
     try:
-        webp_path, jpg_path = generate_featured_image(article_title)
+        webp_path, jpg_path = generate_featured_image(article_title, source_url=source_url)
         if webp_path and jpg_path:
             _pending_image_path = webp_path  # We use WebP for WordPress uploading
             save_pending_state()
@@ -429,7 +454,7 @@ def _handle_regenerate_image():
         return
 
     _pending_image_path = None
-    _generate_and_preview_image(_pending_article.get("title", ""))
+    _generate_and_preview_image(_pending_article.get("title", ""), _pending_article.get("source_url"))
 
 
 def _handle_approve(status="draft"):
@@ -484,7 +509,7 @@ def run_agent_loop():
     """
     interval = config.SCAN_INTERVAL_MINUTES
 
-    logger.info("🤖 FIFA World Cup 2026 News Agent starting up...")
+    logger.info("🤖 Kisan Portal Alerts Agent starting up...")
     logger.info(f"   Scan interval: {interval} minutes")
     logger.info(f"   Keywords tracked: {len(config.ALL_KEYWORDS)}")
     logger.info(f"   RSS feeds: {len(config.RSS_FEEDS)}")
@@ -525,7 +550,7 @@ def run_agent_loop():
 
         except KeyboardInterrupt:
             logger.info("\n⏹️ Agent stopped by user.")
-            send_simple_message("⏹️ FIFA News Agent has been stopped.")
+            send_simple_message("⏹️ Kisan Portal Agent has been stopped.")
             break
         except Exception as e:
             logger.error(f"❌ Scan error: {e}", exc_info=True)
@@ -640,7 +665,7 @@ def test_all_connections():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="FIFA World Cup 2026 News Agent")
+    parser = argparse.ArgumentParser(description="Kisan Portal Alerts Agent — Indian agriculture news & event blog")
     parser.add_argument("--once", action="store_true", help="Run a single scan and exit")
     parser.add_argument("--test", action="store_true", help="Test all API connections")
     parser.add_argument("--listen", action="store_true", help="Listen for Telegram commands only")
@@ -656,32 +681,39 @@ if __name__ == "__main__":
         # 0. Load state including telegram offset
         load_pending_state()
 
-        # 1. Check for pending commands from previous runs
-        try:
-            check_and_handle_commands()
-        except Exception as e:
-            logger.error(f"Command handler error before scan: {e}")
+        # 1. Poll for pending callbacks FIRST (catches clicks from previous 45-min window)
+        logger.info("Checking for pending Telegram commands from previous runs...")
+        for _ in range(12):  # 2 min of checks before scan
+            try:
+                check_and_handle_commands()
+            except Exception as e:
+                logger.error(f"Command handler error: {e}")
+            time.sleep(10)
 
         # 2. Run the scan
         alerts = run_scan()
 
-        if alerts > 0:
-            logger.info("Alerts sent. Polling for commands for 2 minutes to provide instant feedback...")
-            end_time = time.time() + 120
-            while time.time() < end_time:
-                try:
-                    check_and_handle_commands()
-                except Exception as e:
-                    logger.error(f"Command handler error after scan: {e}")
-                time.sleep(3)
-        else:
-            # Poll one last time in case of a recent click
+        # 3. Poll for callbacks after scan — longer window so you can review & click
+        #    (alerts>0: 6 min | alerts=0: 2 min — covers approve/reject on previous article)
+        poll_seconds = 360 if alerts > 0 else 120
+        logger.info(f"Polling for commands for {poll_seconds//60} minutes...")
+        end_time = time.time() + poll_seconds
+        while time.time() < end_time:
             try:
                 check_and_handle_commands()
             except Exception as e:
                 logger.error(f"Command handler error after scan: {e}")
-                
-        # Final cleanup pass to acknowledge the last processed update
+            time.sleep(5)
+
+        # 4. Persist state for next run (critical for GitHub Actions cache)
+        save_pending_state()
+        try:
+            with open("latest_topics.json", "w", encoding="utf-8") as f:
+                json.dump(_latest_topics, f, default=str)
+        except Exception as e:
+            logger.error(f"Failed to save latest topics: {e}")
+
+        # 5. Acknowledge processed updates
         if _update_offset:
             try:
                 get_updates(offset=_update_offset)

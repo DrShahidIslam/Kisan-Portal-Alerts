@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 from writer.seo_prompt import build_image_prompt
-from gemini_client import generate_content_with_fallback, generate_image_with_fallback
+from gemini_client import generate_content_with_fallback, generate_image_with_fallback, generate_image_with_gemini_flash
 
 logger = logging.getLogger(__name__)
 
@@ -157,63 +157,181 @@ def _resize_and_crop(img, target_w, target_h):
     return img
 
 
-def generate_featured_image(article_title, save_dir=None):
+def _try_gemini_flash_image(article_title, output_path_webp, output_path_jpg):
+    """Try Gemini 2.5 Flash Image (free tier). Returns (webp, jpg) or (None, None)."""
+    try:
+        prompt = build_image_prompt(article_title)
+        response = generate_image_with_gemini_flash(prompt)
+        if not response or not getattr(response, "candidates", None):
+            return None, None
+        for part in response.candidates[0].content.parts:
+            if getattr(part, "inline_data", None) and getattr(part.inline_data, "data", None):
+                image_bytes = part.inline_data.data
+                if isinstance(image_bytes, bytes) and len(image_bytes) > 100:
+                    result_webp = _compress_to_webp(image_bytes, output_path_webp)
+                    result_jpg = _compress_to_jpg(image_bytes, output_path_jpg)
+                    if result_webp and result_jpg:
+                        logger.info(f"    Images ready from Gemini Flash Image: {result_webp}, {result_jpg}")
+                        return result_webp, result_jpg
+                break
+    except Exception as e:
+        logger.warning(f"    Gemini Flash Image failed: {e}")
+    return None, None
+
+
+def _try_source_image(source_url, output_path_webp, output_path_jpg):
+    """Try to use the featured image from the source article (og:image or first large img). Returns (webp, jpg) or (None, None)."""
+    if not source_url or not source_url.startswith("http") or "trends.google" in source_url:
+        return None, None
+    try:
+        import requests
+        from urllib.parse import urljoin
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; KisanPortalAgent/1.0; +https://kisanportal.org)"}
+        r = requests.get(source_url, headers=headers, timeout=12)
+        r.raise_for_status()
+        html = r.text
+        image_url = None
+        m = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
+        if m:
+            image_url = m.group(1).strip()
+        if not image_url:
+            m = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']', html, re.I)
+            if m:
+                image_url = m.group(1).strip()
+        if not image_url:
+            for m in re.finditer(r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>', html, re.I):
+                src = m.group(1).strip()
+                if "logo" in src.lower() or "avatar" in src.lower() or "icon" in src.lower():
+                    continue
+                image_url = src
+                break
+        if not image_url:
+            return None, None
+        image_url = urljoin(source_url, image_url)
+        img_r = requests.get(image_url, headers=headers, timeout=12)
+        img_r.raise_for_status()
+        image_bytes = img_r.content
+        if len(image_bytes) < 3000:
+            return None, None
+        result_webp = _compress_to_webp(image_bytes, output_path_webp)
+        result_jpg = _compress_to_jpg(image_bytes, output_path_jpg)
+        if result_webp and result_jpg:
+            logger.info(f"    Image from source article (fallback when generation failed): {result_webp}, {result_jpg}")
+            return result_webp, result_jpg
+    except Exception as e:
+        logger.warning(f"    Source image failed: {e}")
+    return None, None
+
+
+def _try_pollinations_image(article_title, output_path_webp, output_path_jpg):
+    """Try Pollinations.ai (free). Returns (webp, jpg) or (None, None)."""
+    return _generate_pollinations_image(article_title, output_path_webp, output_path_jpg)
+
+
+def _generate_placeholder_image(article_title, output_path_webp, output_path_jpg):
+    """Generate a simple placeholder image (solid color + title text)."""
+    from PIL import ImageDraw, ImageFont
+    try:
+        width, height = TARGET_WIDTH, TARGET_HEIGHT
+        img = Image.new("RGB", (width, height), color=(20, 80, 40))  # Agri green
+        draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 42)
+        except OSError:
+            try:
+                font = ImageFont.truetype("arial.ttf", 42)
+            except OSError:
+                font = ImageFont.load_default()
+        words = article_title.split()
+        lines, current_line = [], ""
+        for word in words:
+            test_line = f"{current_line} {word}".strip()
+            if len(test_line) > 35:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+            else:
+                current_line = test_line
+        if current_line:
+            lines.append(current_line)
+        y_pos = height // 2 - len(lines) * 30
+        for line in lines[:4]:
+            bbox = draw.textbbox((0, 0), line, font=font)
+            text_width = bbox[2] - bbox[0]
+            draw.text(((width - text_width) // 2, y_pos), line, fill=(255, 255, 255), font=font)
+            y_pos += 55
+        result_webp = _compress_to_webp(img, output_path_webp)
+        result_jpg = _compress_to_jpg(img, output_path_jpg)
+        return result_webp, result_jpg
+    except Exception as e:
+        logger.error(f"    Placeholder image error: {e}")
+        return None, None
+
+
+def generate_featured_image(article_title, save_dir=None, source_url=None):
     """
-    Generate an AI featured image for an article using Gemini Imagen.
-    Automatically compresses to WebP and JPEG under 100KB.
-
-    Args:
-        article_title: The article title for context
-        save_dir: Directory to save the image (defaults to project root/images/)
-
-    Returns:
-        tuple: (webp_path, jpg_path) or (None, None) if failed
+    Generate a featured image. Order (same as FIFA alerts app):
+    1. Gemini Flash Image (free)
+    2. Source article image (og:image or first img) — used when image generation fails; no quota cost
+    3. Pollinations (free)
+    4. Imagen (if USE_GEMINI_IMAGEN)
+    5. Placeholder (title text on solid color)
+    Compresses to WebP and JPEG under 100KB.
     """
     if save_dir is None:
         save_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "images")
     os.makedirs(save_dir, exist_ok=True)
 
-    prompt = build_image_prompt(article_title)
-
-    # Build output filenames
-    slug = re.sub(r'[^a-z0-9]+', '-', article_title.lower())[:50].strip('-')
+    slug = re.sub(r"[^a-z0-9]+", "-", article_title.lower())[:50].strip("-")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path_webp = os.path.join(save_dir, f"{slug}_{timestamp}.webp")
     output_path_jpg = os.path.join(save_dir, f"{slug}_{timestamp}.jpg")
 
-    try:
-        logger.info(f"  Generating featured image for: {article_title[:60]}")
+    logger.info(f"  Generating featured image for: {article_title[:60]}")
 
-        # Restore Imagen 3/4 as primary engine
-        generation_config = genai.types.GenerateImagesConfig(
-            number_of_images=1,
-            output_mime_type="image/jpeg",
-            aspect_ratio="16:9",
-        )
+    # 1. Free tier: Gemini 2.5 Flash Image
+    webp, jpg = _try_gemini_flash_image(article_title, output_path_webp, output_path_jpg)
+    if webp and jpg:
+        return webp, jpg
 
-        response = generate_image_with_fallback(
-            model=config.IMAGEN_MODEL, # Uses "imagen-3.0-generate-002" defined in config.py
-            prompt=prompt,
-            generation_config=generation_config
-        )
+    # 2. When image generation fails: use image from source article (og:image or first img) — same as FIFA
+    if source_url:
+        webp, jpg = _try_source_image(source_url, output_path_webp, output_path_jpg)
+        if webp and jpg:
+            return webp, jpg
 
-        # Extract image from response
-        if response.generated_images:
-            for generated_image in response.generated_images:
-                # Compress to both WebP and JPEG
-                result_webp = _compress_to_webp(generated_image.image.image_bytes, output_path_webp)
-                result_jpg = _compress_to_jpg(generated_image.image.image_bytes, output_path_jpg)
-                
-                if result_webp and result_jpg:
-                    logger.info(f"    Images ready: {result_webp}, {result_jpg}")
-                    return result_webp, result_jpg
+    # 3. Free: Pollinations
+    webp, jpg = _try_pollinations_image(article_title, output_path_webp, output_path_jpg)
+    if webp and jpg:
+        return webp, jpg
 
-        logger.warning("    No image in Gemini response, falling back to Pollinations")
-        return _generate_pollinations_image(article_title, output_path_webp, output_path_jpg)
+    # 4. Paid tier only: Imagen (skip on free tier to avoid 400 errors)
+    if getattr(config, "USE_GEMINI_IMAGEN", False):
+        try:
+            prompt = build_image_prompt(article_title)
+            generation_config = genai.types.GenerateImagesConfig(
+                number_of_images=1,
+                output_mime_type="image/jpeg",
+                aspect_ratio="16:9",
+            )
+            response = generate_image_with_fallback(
+                model=getattr(config, "IMAGEN_MODEL", "imagen-3.0-generate-002"),
+                prompt=prompt,
+                generation_config=generation_config,
+            )
+            if response.generated_images:
+                for generated_image in response.generated_images:
+                    result_webp = _compress_to_webp(generated_image.image.image_bytes, output_path_webp)
+                    result_jpg = _compress_to_jpg(generated_image.image.image_bytes, output_path_jpg)
+                    if result_webp and result_jpg:
+                        logger.info(f"    Images ready from Imagen: {result_webp}, {result_jpg}")
+                        return result_webp, result_jpg
+        except Exception as e:
+            logger.warning(f"    Imagen failed: {e}")
 
-    except Exception as e:
-        logger.error(f"    Imagen generation error: {e}. Falling back to Pollinations.")
-        return _generate_pollinations_image(article_title, output_path_webp, output_path_jpg)
+    # 5. Placeholder (solid color + title text)
+    logger.info("    Using placeholder image (title text)")
+    return _generate_placeholder_image(article_title, output_path_webp, output_path_jpg)
 
 
 def _generate_pollinations_image(article_title, output_path_webp, output_path_jpg):
@@ -289,9 +407,9 @@ def _generate_gradient_fallback(output_path_webp, output_path_jpg):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     test_title = "PM-Kisan 19th Installment Date Announced for 2026"
-    path = generate_featured_image(test_title)
-    if path:
-        size_kb = os.path.getsize(path) / 1024
-        print(f"Image: {path} ({size_kb:.1f}KB)")
+    webp_path, jpg_path = generate_featured_image(test_title)
+    if webp_path and jpg_path:
+        size_kb = os.path.getsize(webp_path) / 1024
+        print(f"Image: {webp_path} ({size_kb:.1f}KB)")
     else:
         print("Image generation failed")

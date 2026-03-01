@@ -130,8 +130,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
     test_urls = [
-        "https://www.bbc.com/sport/football",
-        "https://www.espn.com/soccer/",
+        "https://pib.gov.in/",
+        "https://krishijagran.com/",
     ]
 
     for url in test_urls:

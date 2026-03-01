@@ -1,5 +1,5 @@
 """
-NewsAPI Monitor — Fetches top headlines and everything matching World Cup keywords.
+NewsAPI Monitor — Fetches top headlines and everything matching agriculture keywords.
 Uses the free tier of newsapi.org (100 requests/day).
 """
 import logging
@@ -24,7 +24,7 @@ def _hash_story(title, url):
 
 def fetch_news_headlines():
     """
-    Fetch World Cup related headlines from NewsAPI.
+    Fetch agriculture-related headlines from NewsAPI.
     Uses both top-headlines and everything endpoints for maximum coverage.
     Returns a list of story dicts.
 
@@ -38,7 +38,7 @@ def fetch_news_headlines():
         logger.error(f"Failed to initialize NewsAPI client: {e}")
         return stories
 
-    # ── Query 1: Top headlines for "world cup" ──────────────────────
+    # ── Query 1: Top headlines for agriculture in India ──────────────
     try:
         logger.info("NewsAPI: Fetching top headlines for 'agriculture india'")
         top = newsapi.get_top_headlines(
@@ -69,7 +69,7 @@ def fetch_news_headlines():
     except Exception as e:
         logger.error(f"NewsAPI top headlines error: {e}")
 
-    # ── Query 1b: Top headlines for sports category (broad coverage) ──
+    # ── Query 1b: Top business headlines in India (agri-related) ──────
     try:
         logger.info("NewsAPI: Fetching top business headlines in India")
         sports_top = newsapi.get_top_headlines(
@@ -98,9 +98,9 @@ def fetch_news_headlines():
                 stories.append(story)
 
     except Exception as e:
-        logger.error(f"NewsAPI sports headlines error: {e}")
+        logger.error(f"NewsAPI business headlines error: {e}")
 
-    # ── Query 2: Everything endpoint for broader WC coverage ──────────
+    # ── Query 2: Everything endpoint for scheme-specific coverage ───────
     search_queries = [
         "PM Kisan",
         "PMFBY crop insurance",

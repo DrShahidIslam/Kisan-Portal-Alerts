@@ -13,7 +13,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 from writer.source_fetcher import fetch_multiple_sources
-from writer.seo_prompt import build_article_prompt
+from writer.seo_prompt import build_article_prompt, get_category_for_topic
 from gemini_client import generate_content_with_fallback
 
 logger = logging.getLogger(__name__)
@@ -143,7 +143,12 @@ def generate_article(topic, source_urls=None):
     if article:
         article["sources_used"] = [s.get("source_domain", "") for s in source_texts]
         article["word_count"] = len(article.get("content_html", "").split())
-        logger.info(f"  ✅ Article generated: '{article['title']}'")
+        # Assign category from topic: match scheme categories or default to "news"
+        article["category"] = get_category_for_topic(
+            topic.get("topic", ""),
+            topic.get("matched_keyword", "")
+        )
+        logger.info(f"  ✅ Article generated: '{article['title']}' (category: {article['category']})")
     else:
         logger.error("  ❌ Failed to parse Gemini output")
 

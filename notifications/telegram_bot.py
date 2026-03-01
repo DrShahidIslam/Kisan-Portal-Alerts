@@ -84,7 +84,7 @@ def send_trending_alert(topic):
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "✍️ Generate (in next job)", "callback_data": cb_data},
+                {"text": "✍️ Generate Article", "callback_data": cb_data},
                 {"text": "🚫 Ignore", "callback_data": "ignore"},
             ]
         ]

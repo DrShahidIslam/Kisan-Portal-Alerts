@@ -30,7 +30,7 @@ You'll see a form. Fill it in:
 ### Step 1.4 — Account details
 | Field | What to enter |
 |-------|--------------|
-| **Cloud Account Name** | `fifaalerts` (or anything short, no spaces) |
+| **Cloud Account Name** | `kisanportal` (or anything short, no spaces) |
 | **Home Region** | Choose **India South (Hyderabad)** — closest to Pakistan with good availability |
 
 > **IMPORTANT:** You CANNOT change your home region later. Pick India South (Hyderabad) or India West (Mumbai).
@@ -55,7 +55,7 @@ You'll see a form. Fill it in:
 
 ### Step 2.1 — Log in
 - Go to: **https://cloud.oracle.com**
-- Enter your **Cloud Account Name** (from Step 1.4, e.g., `fifaalerts`)
+- Enter your **Cloud Account Name** (from Step 1.4, e.g., `kisanportal`)
 - Click **Next** → Enter your email and password → Click **Sign In**
 
 ### Step 2.2 — Navigate to Compute
@@ -68,7 +68,7 @@ You'll see a form. Fill it in:
 Now fill in the form:
 
 #### Name
-- Type: `fifa-agent`
+- Type: `kisan-agent`
 
 #### Image and Shape (IMPORTANT — don't skip!)
 1. Under **Image**, make sure it says **Ubuntu** (Canonical Ubuntu 22.04 or 24.04)
@@ -120,7 +120,7 @@ ssh -i "C:\Users\shahi\oracle-key.key" ubuntu@129.154.50.100
 ```
 
 - If asked **"Are you sure you want to continue connecting?"** → Type `yes` → Press Enter
-- You should see something like: `ubuntu@fifa-agent:~$`
+- You should see something like: `ubuntu@kisan-agent:~$`
 - **Congratulations, you're inside your server!** 🎉
 
 > **If it says "Permission denied"**: The key file permissions might need fixing. Run:
@@ -147,15 +147,15 @@ sudo apt install -y python3 python3-pip python3-venv
 ```
 
 ```bash
-sudo mkdir -p /opt/fifa-agent
+sudo mkdir -p /opt/kisan-agent
 ```
 
 ```bash
-sudo chown ubuntu:ubuntu /opt/fifa-agent
+sudo chown ubuntu:ubuntu /opt/kisan-agent
 ```
 
 ```bash
-cd /opt/fifa-agent
+cd /opt/kisan-agent
 ```
 
 ```bash
@@ -167,7 +167,7 @@ source venv/bin/activate
 ```
 
 ```bash
-pip install feedparser pytrends newsapi-python python-telegram-bot python-dotenv schedule google-genai trafilatura requests Pillow
+pip install -r requirements.txt
 ```
 *(This takes about 1-2 min)*
 
@@ -186,7 +186,7 @@ mkdir -p images logs database
 - (Keep the first SSH window open too)
 
 ### Step 5.2 — Edit the upload script
-- Open `G:\Fifa Alerts App\deploy\upload_to_vm.ps1` in Notepad
+- Open `G:\Kisan Portal Alerts App\deploy\upload_to_vm.ps1` in Notepad
 - Change line 4: Replace `C:\path\to\your-oracle-key.key` with your actual key path
   - Example: `C:\Users\shahi\oracle-key.key`
 - Change line 5: Replace `YOUR_PUBLIC_IP` with your server's IP
@@ -197,7 +197,7 @@ mkdir -p images logs database
 In the **new** PowerShell window, type:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "G:\Fifa Alerts App\deploy\upload_to_vm.ps1"
+powershell -ExecutionPolicy Bypass -File "G:\Kisan Portal Alerts App\deploy\upload_to_vm.ps1"
 ```
 
 Wait for all files to upload. You'll see progress for each file.
@@ -206,16 +206,16 @@ Wait for all files to upload. You'll see progress for each file.
 > ```powershell
 > $K = "C:\Users\shahi\oracle-key.key"
 > $IP = "129.154.50.100"
-> scp -i $K "G:\Fifa Alerts App\main.py" "ubuntu@${IP}:/opt/fifa-agent/"
-> scp -i $K "G:\Fifa Alerts App\config.py" "ubuntu@${IP}:/opt/fifa-agent/"
-> scp -i $K "G:\Fifa Alerts App\.env" "ubuntu@${IP}:/opt/fifa-agent/"
-> scp -i $K -r "G:\Fifa Alerts App\sources" "ubuntu@${IP}:/opt/fifa-agent/"
-> scp -i $K -r "G:\Fifa Alerts App\detection" "ubuntu@${IP}:/opt/fifa-agent/"
-> scp -i $K -r "G:\Fifa Alerts App\notifications" "ubuntu@${IP}:/opt/fifa-agent/"
-> scp -i $K -r "G:\Fifa Alerts App\writer" "ubuntu@${IP}:/opt/fifa-agent/"
-> scp -i $K -r "G:\Fifa Alerts App\publisher" "ubuntu@${IP}:/opt/fifa-agent/"
-> scp -i $K -r "G:\Fifa Alerts App\database" "ubuntu@${IP}:/opt/fifa-agent/"
-> scp -i $K "G:\Fifa Alerts App\deploy\fifa-agent.service" "ubuntu@${IP}:/opt/fifa-agent/"
+> scp -i $K "G:\Kisan Portal Alerts App\main.py" "ubuntu@${IP}:/opt/kisan-agent/"
+> scp -i $K "G:\Kisan Portal Alerts App\config.py" "ubuntu@${IP}:/opt/kisan-agent/"
+> scp -i $K "G:\Kisan Portal Alerts App\.env" "ubuntu@${IP}:/opt/kisan-agent/"
+> scp -i $K -r "G:\Kisan Portal Alerts App\sources" "ubuntu@${IP}:/opt/kisan-agent/"
+> scp -i $K -r "G:\Kisan Portal Alerts App\detection" "ubuntu@${IP}:/opt/kisan-agent/"
+> scp -i $K -r "G:\Kisan Portal Alerts App\notifications" "ubuntu@${IP}:/opt/kisan-agent/"
+> scp -i $K -r "G:\Kisan Portal Alerts App\writer" "ubuntu@${IP}:/opt/kisan-agent/"
+> scp -i $K -r "G:\Kisan Portal Alerts App\publisher" "ubuntu@${IP}:/opt/kisan-agent/"
+> scp -i $K -r "G:\Kisan Portal Alerts App\database" "ubuntu@${IP}:/opt/kisan-agent/"
+> scp -i $K "G:\Kisan Portal Alerts App\deploy\kisan-agent.service" "ubuntu@${IP}:/opt/kisan-agent/"
 > ```
 
 ---
@@ -227,7 +227,7 @@ Wait for all files to upload. You'll see progress for each file.
 Run these commands:
 
 ```bash
-cd /opt/fifa-agent
+cd /opt/kisan-agent
 source venv/bin/activate
 python main.py --test
 ```
@@ -238,16 +238,16 @@ You should see each service being tested. Check your **Telegram** — you should
 This makes the agent start automatically and run forever:
 
 ```bash
-sudo cp fifa-agent.service /etc/systemd/system/
+sudo cp kisan-agent.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable fifa-agent
-sudo systemctl start fifa-agent
+sudo systemctl enable kisan-agent
+sudo systemctl start kisan-agent
 ```
 
 ### Step 6.3 — Verify it's running
 
 ```bash
-sudo systemctl status fifa-agent
+sudo systemctl status kisan-agent
 ```
 
 You should see: **Active: active (running)** in green.
@@ -258,28 +258,28 @@ Check your **Telegram** again — you should get a startup notification!
 
 ## PART 7: You're Done! 🎉
 
-Your FIFA News Agent is now running **24/7** on Oracle Cloud, even when your PC is off.
+Your Kisan Portal Alerts Agent is now running **24/7** on Oracle Cloud, even when your PC is off.
 
-Every 30 minutes, it will:
-1. Scan 7 RSS feeds + NewsAPI + Google Trends
-2. Detect trending World Cup topics
-3. Send you Telegram alerts
+Every scan cycle, it will:
+1. Scan RSS feeds + NewsAPI + Google Trends (India)
+2. Detect trending agriculture topics
+3. Send you Telegram alerts; you can generate articles and publish to WordPress
 
 ### Commands You'll Use Later
 
 | What you want | Command (run in SSH) |
 |---|---|
-| Check if agent is running | `sudo systemctl status fifa-agent` |
-| See live logs | `sudo journalctl -u fifa-agent -f` |
-| Restart the agent | `sudo systemctl restart fifa-agent` |
-| Stop the agent | `sudo systemctl stop fifa-agent` |
-| Start the agent | `sudo systemctl start fifa-agent` |
+| Check if agent is running | `sudo systemctl status kisan-agent` |
+| See live logs | `sudo journalctl -u kisan-agent -f` |
+| Restart the agent | `sudo systemctl restart kisan-agent` |
+| Stop the agent | `sudo systemctl stop kisan-agent` |
+| Start the agent | `sudo systemctl start kisan-agent` |
 
 ### How to Update Code Later
 
-1. Edit files on your PC in `G:\Fifa Alerts App\`
+1. Edit files on your PC in `G:\Kisan Portal Alerts App\`
 2. Run the upload script again (Step 5.3)
-3. SSH into server → run: `sudo systemctl restart fifa-agent`
+3. SSH into server → run: `sudo systemctl restart kisan-agent`
 
 ### How to Connect to Server Anytime
 
@@ -300,13 +300,13 @@ ssh -i "C:\Users\shahi\oracle-key.key" ubuntu@YOUR_IP
 - Try again
 
 **Agent stops after a few hours:**
-- Run: `sudo journalctl -u fifa-agent --since "1 hour ago"` to see what went wrong
+- Run: `sudo journalctl -u kisan-agent --since "1 hour ago"` to see what went wrong
 - Usually it auto-restarts within 60 seconds (systemd handles this)
 
 **"No module named X" error:**
 ```bash
-cd /opt/fifa-agent
+cd /opt/kisan-agent
 source venv/bin/activate
 pip install feedparser pytrends newsapi-python python-telegram-bot python-dotenv schedule google-genai trafilatura requests Pillow
-sudo systemctl restart fifa-agent
+sudo systemctl restart kisan-agent
 ```

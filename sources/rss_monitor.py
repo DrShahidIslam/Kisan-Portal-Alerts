@@ -52,9 +52,6 @@ def fetch_rss_stories():
                 logger.warning(f"RSS feed error for {feed_name}: {feed.bozo_exception}")
                 continue
 
-            # In general mode, football-only feeds accept all stories
-            is_football_feed = general_mode and feed_name in football_feeds
-
             for entry in feed.entries[:30]:  # Check latest 30 entries
                 title = entry.get("title", "")
                 summary = entry.get("summary", entry.get("description", ""))

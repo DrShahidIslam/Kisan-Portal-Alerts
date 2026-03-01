@@ -19,8 +19,11 @@ logger = logging.getLogger(__name__)
 API_BASE = f"{config.WP_URL}/wp-json/wp/v2"
 AUTH = HTTPBasicAuth(config.WP_USERNAME, config.WP_APP_PASSWORD)
 TIMEOUT = 30
+RETRY_DELAY = 5  # seconds between retries on 502/503
+# User-Agent and Referer avoid Wordfence blocking (blank User-Agent/Referer)
 HEADERS = {
-    "User-Agent": "KisanPortalAgent/1.0"
+    "User-Agent": "KisanPortalAgent/1.0 (WordPress REST)",
+    "Referer": f"{config.WP_URL}/",
 }
 
 
@@ -74,34 +77,42 @@ def create_post(article, featured_image_path=None, status=None):
         post_data["featured_media"] = media_id
 
     try:
-        response = requests.post(
-            f"{API_BASE}/posts",
-            json=post_data,
-            auth=AUTH,
-            headers=HEADERS,
-            timeout=TIMEOUT
-        )
+        for attempt in range(2):
+            response = requests.post(
+                f"{API_BASE}/posts",
+                json=post_data,
+                auth=AUTH,
+                headers=HEADERS,
+                timeout=TIMEOUT,
+            )
+            if response.status_code in (200, 201):
+                result = response.json()
+                post_id = result.get("id")
+                post_url = result.get("link", "")
 
-        if response.status_code in (200, 201):
-            result = response.json()
-            post_id = result.get("id")
-            post_url = result.get("link", "")
+                logger.info(f"  ✅ Post created (ID: {post_id}, Status: {status})")
+                logger.info(f"  🔗 URL: {post_url}")
 
-            logger.info(f"  ✅ Post created (ID: {post_id}, Status: {status})")
-            logger.info(f"  🔗 URL: {post_url}")
+                # ── Step 5: Set RankMath SEO fields ─────────────────────
+                _set_rankmath_meta(post_id, article)
 
-            # ── Step 5: Set RankMath SEO fields ─────────────────────
-            _set_rankmath_meta(post_id, article)
+                return {
+                    "post_id": post_id,
+                    "post_url": post_url,
+                    "status": status,
+                }
+            if response.status_code in (502, 503) and attempt == 0:
+                logger.warning(f"  ⚠️ WordPress returned {response.status_code}, retrying in {RETRY_DELAY}s...")
+                import time
+                time.sleep(RETRY_DELAY)
+                continue
+            break
 
-            return {
-                "post_id": post_id,
-                "post_url": post_url,
-                "status": status,
-            }
-        else:
-            logger.error(f"  ❌ Post creation failed: HTTP {response.status_code}")
-            logger.error(f"     Response: {response.text[:500]}")
-            return None
+        logger.error(f"  ❌ Post creation failed: HTTP {response.status_code}")
+        logger.error(f"     Response: {response.text[:500]}")
+        if response.status_code == 403:
+            logger.error("     Tip: 403 often means firewall/plugin blocking. Whitelist GitHub Actions IPs or allow REST API.")
+        return None
 
     except Exception as e:
         logger.error(f"  ❌ Post creation error: {e}")
@@ -127,33 +138,37 @@ def upload_media(file_path, title=""):
             "Content-Type": mime_type,
         })
 
-        response = requests.post(
-            f"{API_BASE}/media",
-            data=file_data,
-            headers=headers,
-            auth=AUTH,
-            timeout=60
-        )
+        for attempt in range(2):
+            response = requests.post(
+                f"{API_BASE}/media",
+                data=file_data,
+                headers=headers,
+                auth=AUTH,
+                timeout=60,
+            )
+            if response.status_code in (200, 201):
+                media_id = response.json().get("id")
+                logger.info(f"  ✅ Image uploaded (Media ID: {media_id})")
 
-        if response.status_code in (200, 201):
-            media_id = response.json().get("id")
-            logger.info(f"  ✅ Image uploaded (Media ID: {media_id})")
+                if title:
+                    requests.post(
+                        f"{API_BASE}/media/{media_id}",
+                        json={"alt_text": title[:125]},
+                        auth=AUTH,
+                        headers=HEADERS,
+                        timeout=15,
+                    )
+                return media_id
+            if response.status_code in (502, 503) and attempt == 0:
+                logger.warning(f"  ⚠️ Media upload {response.status_code}, retrying in {RETRY_DELAY}s...")
+                import time
+                time.sleep(RETRY_DELAY)
+                continue
+            break
 
-            # Set alt text
-            if title:
-                requests.post(
-                    f"{API_BASE}/media/{media_id}",
-                    json={"alt_text": title[:125]},
-                    auth=AUTH,
-                    headers=HEADERS,
-                    timeout=15
-                )
-
-            return media_id
-        else:
-            logger.error(f"  ❌ Media upload failed: HTTP {response.status_code}")
-            logger.error(f"     {response.text[:300]}")
-            return None
+        logger.error(f"  ❌ Media upload failed: HTTP {response.status_code}")
+        logger.error(f"     {response.text[:300]}")
+        return None
 
     except Exception as e:
         logger.error(f"  ❌ Media upload error: {e}")
@@ -195,9 +210,11 @@ def get_or_create_category(name):
                 if cat["name"].lower() == name.lower() or cat["slug"].lower() == name.lower():
                     return cat["id"]
 
+        # When creating, use a friendly display name for "news"; others use slug as name
+        create_name = "News" if name.lower() == "news" else name
         response = requests.post(
             f"{API_BASE}/categories",
-            json={"name": name},
+            json={"name": create_name, "slug": name},
             auth=AUTH,
             headers=HEADERS,
             timeout=TIMEOUT
@@ -205,7 +222,7 @@ def get_or_create_category(name):
 
         if response.status_code in (200, 201):
             cat_id = response.json().get("id")
-            logger.info(f"  📁 Created category '{name}' (ID: {cat_id})")
+            logger.info(f"  📁 Created category '{create_name}' (ID: {cat_id})")
             return cat_id
 
     except Exception as e:
@@ -254,33 +271,38 @@ def get_or_create_tag(name):
 def _set_rankmath_meta(post_id, article):
     """
     Set RankMath SEO metadata on a post.
+    Uses PATCH so only meta is updated. Meta keys must be registered in WP (see deploy/rankmath-rest-snippet.php).
     """
     focus_kw = article.get("matched_keyword", "")
     if not focus_kw and article.get("tags"):
         focus_kw = article["tags"][0]
 
-    # RankMath meta keys
-    meta_data = {
-        "rank_math_title": article.get("title", ""),
-        "rank_math_description": article.get("meta_description", ""),
-        "rank_math_focus_keyword": focus_kw,
-        "rank_math_robots": ["index", "follow"],
+    rankmath_meta = {
+        "meta": {
+            "rank_math_title": article.get("title", ""),
+            "rank_math_description": article.get("meta_description", ""),
+            "rank_math_focus_keyword": focus_kw,
+            "rank_math_robots": ["index", "follow"],
+        }
     }
 
     try:
-        # Many WP setups require meta to be updated on the post object itself
-        response = requests.post(
+        response = requests.request(
+            "PATCH",
             f"{API_BASE}/posts/{post_id}",
-            json={"meta": meta_data},
+            json=rankmath_meta,
             auth=AUTH,
             headers=HEADERS,
-            timeout=TIMEOUT
+            timeout=TIMEOUT,
         )
 
         if response.status_code == 200:
             logger.info(f"  ✅ RankMath SEO metadata set (focus: '{focus_kw}')")
         else:
-            logger.warning(f"  ⚠️ RankMath meta update returned HTTP {response.status_code}: {response.text[:200]}")
+            logger.warning(
+                f"  ⚠️ RankMath meta update returned HTTP {response.status_code}. "
+                "Add deploy/rankmath-rest-snippet.php to your theme's functions.php so meta is writable via REST."
+            )
     except Exception as e:
         logger.warning(f"  ⚠️ RankMath meta update failed: {e}")
 

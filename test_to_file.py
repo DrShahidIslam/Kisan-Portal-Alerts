@@ -9,7 +9,7 @@ import config
 
 results = []
 results.append("=" * 50)
-results.append("FIFA NEWS AGENT - CONNECTION TEST")
+results.append("KISAN PORTAL ALERTS AGENT - CONNECTION TEST")
 results.append("=" * 50)
 
 # 1. Telegram
@@ -31,7 +31,7 @@ results.append("\n[2] NewsAPI:")
 try:
     from newsapi import NewsApiClient
     newsapi = NewsApiClient(api_key=config.NEWS_API_KEY)
-    result = newsapi.get_top_headlines(q="football", language="en", page_size=1)
+    result = newsapi.get_top_headlines(q="agriculture", language="en", page_size=1)
     if result.get("status") == "ok":
         results.append(f"    OK - {result.get('totalResults', 0)} results available")
     else:

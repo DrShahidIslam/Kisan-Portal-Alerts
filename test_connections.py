@@ -7,7 +7,7 @@ os.environ["PYTHONIOENCODING"] = "utf-8"
 import config
 
 print("=" * 50)
-print("FIFA NEWS AGENT - CONNECTION TEST")
+print("KISAN PORTAL ALERTS AGENT - CONNECTION TEST")
 print("=" * 50)
 
 # 1. Telegram
@@ -23,7 +23,7 @@ try:
         send_url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
         msg_r = req.post(send_url, json={
             "chat_id": config.TELEGRAM_CHAT_ID,
-            "text": "FIFA News Agent - Connection test successful! The agent is ready."
+            "text": "Kisan Portal Agent - Connection test successful! The agent is ready."
         }, timeout=10)
         msg_data = msg_r.json()
         if msg_data.get("ok"):
@@ -40,7 +40,7 @@ print("\n[2] NewsAPI:")
 try:
     from newsapi import NewsApiClient
     newsapi = NewsApiClient(api_key=config.NEWS_API_KEY)
-    result = newsapi.get_top_headlines(q="football", language="en", page_size=1)
+    result = newsapi.get_top_headlines(q="agriculture", language="en", page_size=1)
     if result.get("status") == "ok":
         print(f"    OK - {result.get('totalResults', 0)} results available")
     else:

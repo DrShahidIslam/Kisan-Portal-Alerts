@@ -3,13 +3,51 @@ SEO Prompt Template — Master prompt used for Gemini article generation.
 Enforces SEO best practices, your site's editorial style, Kadence block HTML, and internal linking.
 """
 
-# Categorization rules for the prompt
-CATEGORY_MAPPING = [
+# Scheme category slugs matching kisanportal.org pillar URLs (for WordPress category assignment)
+SCHEME_CATEGORY_SLUGS = [
     "pm-kisan-samman-nidhi", "pmfby", "kisan-credit-card", "kisan-vikas-patra",
     "enam-scheme", "kisan-karz-mochan-yojana", "rythu-bharosa", "soil-health-card",
     "pm-kisan-tractor-scheme", "e-crop", "pm-dhan-dhaanya-krishi-yojana",
-    "dalhan-aatmanirbharta-mission-scheme", "e-panta", "pik-vima-scheme-maharashtra"
+    "dalhan-aatmanirbharta-mission-scheme", "e-panta", "pik-vima-scheme-maharashtra",
 ]
+# For prompt: same list + "news" for unrelated topics
+CATEGORY_MAPPING = SCHEME_CATEGORY_SLUGS + ["news"]
+
+# Topic/keyword phrases → WordPress category slug. First match wins; otherwise "news".
+# Order matters: more specific phrases should come before broad ones (e.g. "PM Kisan Tractor" before "PM Kisan").
+KEYWORDS_TO_CATEGORY = [
+    # (list of phrases to match in topic title or matched_keyword, slug)
+    (["pm kisan tractor", "tractor scheme", "tractor subsidy"], "pm-kisan-tractor-scheme"),
+    (["pm kisan", "pm-kisan", "samman nidhi", "kisan samman"], "pm-kisan-samman-nidhi"),
+    (["pmfby", "fasal bima", "crop insurance", "pradhan mantri fasal bima"], "pmfby"),
+    (["kisan credit card", "kcc"], "kisan-credit-card"),
+    (["kisan vikas patra", "kvp"], "kisan-vikas-patra"),
+    (["enam", "e-nam", "e nam", "national agricultural market"], "enam-scheme"),
+    (["kisan karz mochan", "karz mochan"], "kisan-karz-mochan-yojana"),
+    (["rythu bharosa", "rythu bandhu", "rythu bharosa scheme"], "rythu-bharosa"),
+    (["soil health card", "soil health"], "soil-health-card"),
+    (["e-crop", "e crop", "ecrop"], "e-crop"),
+    (["pm dhan dhaanya", "dhaanya krishi", "pm dhan"], "pm-dhan-dhaanya-krishi-yojana"),
+    (["dalhan", "aatmanirbharta mission", "dalhan aatmanirbharta"], "dalhan-aatmanirbharta-mission-scheme"),
+    (["e-panta", "e panta", "e panta andhra", "panta andhra"], "e-panta"),
+    (["pik vima", "pik vima maharashtra", "pik vima scheme"], "pik-vima-scheme-maharashtra"),
+]
+
+
+def get_category_for_topic(topic_title, matched_keyword=""):
+    """
+    Return the WordPress category slug for this topic.
+    If the topic or matched_keyword matches one of the scheme categories, return that slug.
+    Otherwise return "news".
+    """
+    if not topic_title and not matched_keyword:
+        return "news"
+    combined = f" {((topic_title or '') + ' ' + (matched_keyword or '')).lower()} "
+    for phrases, slug in KEYWORDS_TO_CATEGORY:
+        for phrase in phrases:
+            if phrase.lower() in combined:
+                return slug
+    return "news"
 
 # Internal pages on kisanportal.org for professional Pillar-Cluster linking
 INTERNAL_LINKS = {
@@ -75,7 +113,7 @@ PRIMARY KEYWORD: {matched_keyword or topic_title}
 2. META_DESCRIPTION: Professional summary (150 chars).
 3. SLUG: lowercase-kebab-case (No markdown).
 4. TAGS: CSV list of 5 tags.
-5. CATEGORY: ONE exact slug from: {cat_mapping_str}.
+5. CATEGORY: ONE exact slug from: {cat_mapping_str}. Use "news" only when the topic does not match any of the scheme categories above (e.g. general agri news, policy roundups).
 6. ---CONTENT_START---
    [Intro Paragraph]
    

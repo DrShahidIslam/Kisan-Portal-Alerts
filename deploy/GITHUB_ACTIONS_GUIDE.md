@@ -111,7 +111,7 @@ git push -u origin main
 ## PART 5: Verify It Works (2 minutes)
 
 ### Step 5.1 — Check the Actions tab
-1. Go to your repo on GitHub: `https://github.com/YOUR_USERNAME/fifa-news-agent`
+1. Go to your repo on GitHub: `https://github.com/YOUR_USERNAME/kisan-portal-alerts`
 2. Click the **Actions** tab (near the top)
 3. You should see **"Kisan Portal Agent - Scan"** listed
 
