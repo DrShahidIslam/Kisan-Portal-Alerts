@@ -30,7 +30,7 @@ def _search_news_for_trend(keyword):
         import feedparser
         import urllib.parse
         encoded_kw = urllib.parse.quote(keyword)
-        rss_url = f"https://news.google.com/rss/search?q={encoded_kw}&hl=en-US&gl=US&ceid=US:en"
+        rss_url = f"https://news.google.com/rss/search?q={encoded_kw}&hl=en-IN&gl=IN&ceid=IN:en"
         feed = feedparser.parse(rss_url)
         for entry in feed.entries[:3]:
             if entry.link and entry.link not in urls:

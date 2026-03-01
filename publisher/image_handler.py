@@ -288,7 +288,7 @@ def _generate_gradient_fallback(output_path_webp, output_path_jpg):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
-    test_title = "Italy Qualifies for World Cup 2026 After Northern Ireland Victory"
+    test_title = "PM-Kisan 19th Installment Date Announced for 2026"
     path = generate_featured_image(test_title)
     if path:
         size_kb = os.path.getsize(path) / 1024
