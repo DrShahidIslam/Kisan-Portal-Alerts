@@ -100,14 +100,34 @@ def fetch_news_headlines():
     except Exception as e:
         logger.error(f"NewsAPI business headlines error: {e}")
 
-    # ── Query 2: Everything endpoint for scheme-specific coverage ───────
+    # ── Query 2: Everything endpoint for scheme-specific and regional coverage ───────
     search_queries = [
+        # Central schemes
         "PM Kisan",
         "PMFBY crop insurance",
         "Kisan Credit Card",
-        "Rythu Bharosa",
-        "agriculture minimum support price",
-        "agriculture minister india",
+        "eNAM agriculture India",
+        "Soil Health Card scheme",
+        "MSP minimum support price farmers",
+        "agriculture minister India",
+        "farmer scheme India",
+        "agriculture budget India",
+        "Agriculture Infrastructure Fund India",
+        "Namo Drone Didi farmers",
+        "Natural Farming India",
+        # State schemes (all corners of India)
+        "Rythu Bharosa Rythu Bandhu",
+        "e Panta Andhra farmers",
+        "Kalia Yojana Odisha",
+        "Krishak Bandhu West Bengal",
+        "Shetkari Sanman Nidhi Maharashtra",
+        "Bhavantar Bhugtan Yojana",
+        "Pik Vima Maharashtra crop insurance",
+        "e-Chasa Andhra crop",
+        "farmer protest India",
+        "FPO farmer producer organisation India",
+        "procurement MSP mandi India",
+        "kharif rabi crop India",
     ]
 
     for query in search_queries:

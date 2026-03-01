@@ -21,20 +21,57 @@ WP_USERNAME = os.getenv("WP_USERNAME")
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD")
 
 # ── RSS Feeds ─────────────────────────────────────────────────────────
-# Use active, working feeds. Feeds in AGRI_ONLY_FEEDS below: accept all entries (no keyword filter).
+# Use active, working feeds. Feeds in AGRI_ONLY_FEEDS: accept all entries (still apply EXCLUDE_KEYWORDS).
+# Others (ET, IE, etc.): require keyword match for agriculture/farmer/scheme relevance.
 RSS_FEEDS = {
+    # Rural Voice — farmer/scheme-focused; all accepted as agri-only
     "Rural Voice (Latest)": "https://eng.ruralvoice.in/rss/latest-posts",
     "Rural Voice (National)": "https://eng.ruralvoice.in/rss/category/national",
+    "Rural Voice (States)": "https://eng.ruralvoice.in/rss/category/state",
+    "Rural Voice (Opinion)": "https://eng.ruralvoice.in/rss/category/opinion",
     "Rural Voice (Agribusiness)": "https://eng.ruralvoice.in/rss/category/agribusiness",
+    "Rural Voice (Latest News)": "https://eng.ruralvoice.in/rss/category/latest-news",
+    "Rural Voice (Agritech)": "https://eng.ruralvoice.in/rss/category/agritech",
+    "Rural Voice (Cooperatives)": "https://eng.ruralvoice.in/rss/category/cooperatives",
+    "Rural Voice (Agri Diplomacy)": "https://eng.ruralvoice.in/rss/category/agri-diplomacy",
+    "Rural Voice (International)": "https://eng.ruralvoice.in/rss/category/international",
+    "Rural Voice (Rural Dialogue)": "https://eng.ruralvoice.in/rss/category/rural-dialogue",
+    "Rural Voice (Ground Report)": "https://eng.ruralvoice.in/rss/category/ground-report",
+    "Rural Voice (Agri Start-Ups)": "https://eng.ruralvoice.in/rss/category/agri-start-ups",
+    "Rural Voice (Rural Connect)": "https://eng.ruralvoice.in/rss/category/rural-connect",
+    # Government & agri-focused outlets
     "PIB Press Releases": "https://pib.gov.in/RssMain.aspx?ModId=6&LangId=1",
     "Krishi Jagran": "https://krishijagran.com/feed/",
-    "Financial Express Industry": "https://www.financialexpress.com/industry/feed/",
     "The Hindu Agriculture": "https://www.thehindu.com/sci-tech/agriculture/feeder/default.rss",
+    "Financial Express Industry": "https://www.financialexpress.com/industry/feed/",
+    # Broad outlets — keyword-filtered (not in AGRI_ONLY_FEEDS)
+    "ET Economy": "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms",
+    "ET Industry": "https://economictimes.indiatimes.com/industry/rssfeeds/13352306.cms",
+    "ET India News": "https://economictimes.indiatimes.com/news/india/rssfeeds/81582957.cms",
+    "ET Environment": "https://economictimes.indiatimes.com/news/environment/rssfeeds/2647163.cms",
+    "Indian Express India": "https://indianexpress.com/section/india/feed/",
+    "Indian Express Economy": "https://indianexpress.com/section/business/economy/feed/",
+    "Indian Express Commodities": "https://indianexpress.com/section/business/commodities/feed/",
+    "Down to Earth Top Stories": "https://www.downtoearth.org.in/rssfeedstopstories.cms",
+    "Down to Earth Environment": "https://www.downtoearth.org.in/rssfeeds/1221656.cms",
+    # Leading Indian news — keyword-filtered for scheme/agri relevance
+    "Zee News Nation": "https://zeenews.india.com/rss/india-national-news.xml",
+    "Zee News States": "https://zeenews.india.com/rss/india-news.xml",
+    "Zee News Business": "https://zeenews.india.com/rss/business.xml",
+    "Zee News Science & Environment": "https://zeenews.india.com/rss/science-environment-news.xml",
+    "Hindustan Times Economy": "https://www.hindustantimes.com/feeds/rss/ht-insight/economy/rssfeed.xml",
+    "Hindustan Times Climate": "https://www.hindustantimes.com/feeds/rss/ht-insight/climate-change/rssfeed.xml",
+    "Livemint Economy & Politics": "https://www.livemint.com/rss/economy_politics",
+    "NDTV Business": "https://feeds.feedburner.com/ndtvkhabar-business",
 }
-# Feeds that are 100% agriculture — accept every entry (still apply EXCLUDE_KEYWORDS). Ensures RSS shows in alerts.
+# Feeds that are 100% agriculture/rural — accept every entry (still apply EXCLUDE_KEYWORDS).
 AGRI_ONLY_FEEDS = [
-    "Rural Voice (Latest)", "Rural Voice (National)", "Rural Voice (Agribusiness)",
-    "PIB Press Releases", "Krishi Jagran", "Financial Express Industry", "The Hindu Agriculture",
+    "Rural Voice (Latest)", "Rural Voice (National)", "Rural Voice (States)", "Rural Voice (Opinion)",
+    "Rural Voice (Agribusiness)", "Rural Voice (Latest News)", "Rural Voice (Agritech)",
+    "Rural Voice (Cooperatives)", "Rural Voice (Agri Diplomacy)", "Rural Voice (International)",
+    "Rural Voice (Rural Dialogue)", "Rural Voice (Ground Report)", "Rural Voice (Agri Start-Ups)",
+    "Rural Voice (Rural Connect)",
+    "PIB Press Releases", "Krishi Jagran", "The Hindu Agriculture", "Financial Express Industry",
 ]
 
 # ── Keyword Watchlists ────────────────────────────────────────────────

@@ -71,7 +71,12 @@ def load_pending_state():
                 # Image file may not persist across runs (e.g. GitHub Actions); clear if missing
                 if _pending_image_path and not os.path.exists(_pending_image_path):
                     _pending_image_path = None
-                return bool(_pending_article)
+                # Treat invalid or empty article as no pending (avoid stuck "already pending" with nothing visible)
+                if not isinstance(_pending_article, dict) or not _pending_article.get("title"):
+                    _pending_article = None
+                    save_pending_state()
+                    return False
+                return True
     except Exception as e:
         logger.error(f"Failed to load pending state: {e}")
     return False
@@ -307,6 +312,11 @@ def check_and_handle_commands():
             _pending_image_path = None
             save_pending_state()
             send_simple_message("🗑️ Article discarded.")
+        elif text.startswith("/clear_pending"):
+            _pending_article = None
+            _pending_image_path = None
+            save_pending_state()
+            send_simple_message("✅ Pending article cleared. You can generate a new one now.")
 
 
 def _handle_write_article(topic_hash=None):
@@ -326,7 +336,12 @@ def _handle_write_article(topic_hash=None):
 
     # Don't start a new one if an article is already pending review
     if _pending_article or load_pending_state():
-        send_simple_message(f"⚠️ An article is already pending review: '{(_pending_article or {}).get('title', 'Unknown')}'\n\nPlease ✅ Approve or 🗑️ Reject it before generating a new one.")
+        title = (_pending_article or {}).get("title", "Unknown")
+        send_simple_message(
+            f"⚠️ An article is already pending review: '{title}'\n\n"
+            "Please ✅ Approve or 🗑️ Reject it before generating a new one.\n\n"
+            "If you don't see the article preview, send /clear_pending to discard and start fresh."
+        )
         return
 
     topic = None
@@ -477,6 +492,15 @@ def _handle_approve(status="draft"):
             img_note = " (with featured image)" if _pending_image_path else ""
             send_publish_confirmation(result["post_url"], _pending_article["title"], post_id=result["post_id"], status=status)
             logger.info(f"✅ Published{img_note}: {result['post_url']}")
+            try:
+                from writer.seo_prompt import add_published_post
+                add_published_post(
+                    result["post_url"],
+                    _pending_article["title"],
+                    _pending_article.get("slug", ""),
+                )
+            except Exception:
+                pass
             _pending_article = None
             _pending_image_path = None
             save_pending_state()

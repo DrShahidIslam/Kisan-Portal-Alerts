@@ -2,6 +2,8 @@
 SEO Prompt Template — Master prompt used for Gemini article generation.
 Enforces SEO best practices, your site's editorial style, Kadence block HTML, and internal linking.
 """
+import os
+import json
 
 # Scheme category slugs matching kisanportal.org pillar URLs (for WordPress category assignment)
 SCHEME_CATEGORY_SLUGS = [
@@ -49,16 +51,113 @@ def get_category_for_topic(topic_title, matched_keyword=""):
                 return slug
     return "news"
 
-# Internal pages on kisanportal.org for professional Pillar-Cluster linking
+# Verified kisanportal.org POST URLs for internal linking (real published pages — no 404s).
+# Category slugs (SCHEME_CATEGORY_SLUGS) are used only for WordPress category assignment, not for links.
+BASE_URL = "https://kisanportal.org"
+
+# Each entry: exact URL as published on site, topic label, and suggested anchor text. Use ONLY these URLs.
+INTERNAL_LINKS_PILLARS = [
+    {"url": f"{BASE_URL}/pm-kisan/", "topic": "PM Kisan", "anchors": ["PM Kisan", "PM-Kisan scheme", "farmer income support"]},
+    {"url": f"{BASE_URL}/pm-kisan-status-check/", "topic": "PM Kisan Status Check", "anchors": ["PM Kisan status check", "check PM Kisan status", "beneficiary status"]},
+    {"url": f"{BASE_URL}/pm-kisan-beneficiary-list/", "topic": "PM Kisan Beneficiary List", "anchors": ["PM Kisan beneficiary list", "beneficiary list"]},
+    {"url": f"{BASE_URL}/pm-kisan-ekyc-guide/", "topic": "PM Kisan eKYC", "anchors": ["PM Kisan eKYC", "eKYC for PM Kisan"]},
+    {"url": f"{BASE_URL}/pm-kisan-22nd-installment-date-2026/", "topic": "PM Kisan 22nd Installment", "anchors": ["PM Kisan 22nd installment", "22nd kist date"]},
+    {"url": f"{BASE_URL}/pm-kisan-21st-installment-released/", "topic": "PM Kisan 21st Installment", "anchors": ["PM Kisan 21st installment", "21st kist"]},
+    {"url": f"{BASE_URL}/pm-kisan-20th-installment/", "topic": "PM Kisan 20th Installment", "anchors": ["PM Kisan 20th installment"]},
+    {"url": f"{BASE_URL}/pmfby-guide/", "topic": "PMFBY Guide", "anchors": ["PMFBY", "Pradhan Mantri Fasal Bima Yojana", "crop insurance guide"]},
+    {"url": f"{BASE_URL}/pmfby-rabi-enrollment/", "topic": "PMFBY Rabi Enrollment", "anchors": ["PMFBY Rabi enrollment", "crop insurance enrollment"]},
+    {"url": f"{BASE_URL}/kisan-credit-card-scheme/", "topic": "Kisan Credit Card Scheme", "anchors": ["Kisan Credit Card", "KCC", "farm credit scheme"]},
+    {"url": f"{BASE_URL}/kisan-vikas-patra-guide/", "topic": "Kisan Vikas Patra Guide", "anchors": ["Kisan Vikas Patra", "KVP", "KVP guide"]},
+    {"url": f"{BASE_URL}/enam-guide/", "topic": "eNAM Guide", "anchors": ["eNAM", "eNAM guide", "National Agricultural Market"]},
+    {"url": f"{BASE_URL}/enam-2.0-registration-complete-guide/", "topic": "eNAM 2.0 Registration", "anchors": ["eNAM 2.0", "eNAM registration"]},
+    {"url": f"{BASE_URL}/kisan-karz-mochan/", "topic": "Kisan Karz Mochan Yojana", "anchors": ["Kisan Karz Mochan", "debt relief for farmers"]},
+    {"url": f"{BASE_URL}/rythu-bharosa-guide/", "topic": "Rythu Bharosa Guide", "anchors": ["Rythu Bharosa", "Rythu Bandhu", "farmer support"]},
+    {"url": f"{BASE_URL}/soil-health-card-guide/", "topic": "Soil Health Card Guide", "anchors": ["Soil Health Card", "soil health card guide"]},
+    {"url": f"{BASE_URL}/pm-tractor-scheme/", "topic": "PM Tractor Scheme", "anchors": ["PM Kisan Tractor Scheme", "tractor subsidy", "tractor scheme"]},
+    {"url": f"{BASE_URL}/e-crop-registration/", "topic": "E-Crop Registration", "anchors": ["E-Crop registration", "e-Crop", "crop registration"]},
+    {"url": f"{BASE_URL}/e-crop-status-ap/", "topic": "E-Crop Status AP", "anchors": ["E-Crop status", "e-Crop status check"]},
+    {"url": f"{BASE_URL}/pm-dhan-dhaanya-krishi-yojana-pmddky/", "topic": "PM Dhan Dhaanya Krishi Yojana", "anchors": ["PM Dhan Dhaanya", "PMDDKY", "Krishi Yojana"]},
+    {"url": f"{BASE_URL}/dalhan-aatmanirbharta-mission/", "topic": "Dalhan Aatmanirbharta Mission", "anchors": ["Dalhan Aatmanirbharta", "oil seeds mission"]},
+    {"url": f"{BASE_URL}/e-panta-login-app-registration/", "topic": "e-Panta Login & Registration", "anchors": ["e-Panta", "e Panta registration", "e Panta login"]},
+    {"url": f"{BASE_URL}/e-panta-status-check/", "topic": "e-Panta Status Check", "anchors": ["e-Panta status", "e Panta status check"]},
+    {"url": f"{BASE_URL}/e-panta-ekyc/", "topic": "e-Panta eKYC", "anchors": ["e-Panta eKYC", "e Panta eKYC"]},
+    {"url": f"{BASE_URL}/e-chasa-ap/", "topic": "e-Chasa AP", "anchors": ["e-Chasa", "e Chasa AP", "Andhra crop registration"]},
+    {"url": f"{BASE_URL}/maharashtra-rabi-pik-virma/", "topic": "Maharashtra Rabi Pik Vima", "anchors": ["Pik Vima Maharashtra", "Maharashtra crop insurance", "Rabi Pik Vima"]},
+]
+
 INTERNAL_LINKS = {
-    "pillars": [
-        {"url": "https://kisanportal.org/pm-kisan-st-check/", "topic": "PM Kisan Status Check", "anchors": ["PM Kisan beneficiary status check", "check PM Kisan status online", "PM-Kisan status verify"]},
-        {"url": "https://kisanportal.org/pmfby-rabi-registration-open-crop-insurance-guide/", "topic": "PMFBY Crop Insurance", "anchors": ["PMFBY crop insurance registration", "Pradhan Mantri Fasal Bima Yojana Guide", "apply for crop insurance 2026"]},
-        {"url": "https://kisanportal.org/pm-tractor-hi/", "topic": "Tractor Subsidy", "anchors": ["PM Kisan Tractor Scheme", "tractor subsidy for farmers", "agricultural machinery scheme"]},
-        {"url": "https://kisanportal.org/pm-kisan-samman-nidhi-22vi-kist-kab-aaegi/", "topic": "PM Kisan Installments", "anchors": ["PM Kisan 22nd installment updates", "PM-Kisan payment dates 2026", "next PM Kisan kist news"]},
-    ],
-    "home": {"url": "https://kisanportal.org/", "anchor": "Kisan Portal Home"}
+    "pillars": INTERNAL_LINKS_PILLARS,
+    "home": {"url": f"{BASE_URL}/", "anchor": "Kisan Portal Home"},
 }
+
+# File to store URLs of posts published by this agent — used as internal links in future articles.
+PUBLISHED_POSTS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "published_posts.json")
+
+
+def _load_published_posts():
+    """Load list of agent-published post URLs (for internal linking). Returns list of {url, topic, anchors}."""
+    if not os.path.exists(PUBLISHED_POSTS_FILE):
+        return []
+    try:
+        with open(PUBLISHED_POSTS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        out = []
+        for entry in data:
+            url = (entry.get("url") or "").strip()
+            if not url or not url.startswith("http"):
+                continue
+            title = (entry.get("title") or "").strip() or "Article"
+            slug = (entry.get("slug") or "").strip()
+            anchors = [title]
+            if slug:
+                anchors.append(slug.replace("-", " "))
+            out.append({"url": url.rstrip("/") + "/", "topic": title, "anchors": anchors})
+        return out
+    except Exception:
+        return []
+
+
+def get_internal_links_for_prompt():
+    """
+    Return full list of internal link options: static pillars + agent-published posts.
+    Newly published posts are listed first so they are preferred as the best reference for future articles.
+    """
+    static_urls = {p["url"].rstrip("/") for p in INTERNAL_LINKS_PILLARS}
+    published = _load_published_posts()
+    # Prepend published posts (most recent first if we stored in order), avoid duplicate URLs
+    combined = []
+    for p in published:
+        u = (p["url"] or "").rstrip("/")
+        if u and u not in static_urls:
+            combined.append(p)
+            static_urls.add(u)
+    return combined + INTERNAL_LINKS_PILLARS
+
+
+def add_published_post(post_url, title, slug=""):
+    """
+    Register a newly published post so it can be used for internal linking in future articles.
+    Call this after successfully publishing to WordPress.
+    """
+    if not post_url or not title:
+        return
+    post_url = (post_url or "").strip().rstrip("/")
+    if not post_url.startswith("http"):
+        return
+    try:
+        data = []
+        if os.path.exists(PUBLISHED_POSTS_FILE):
+            with open(PUBLISHED_POSTS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        # Avoid duplicate URL
+        existing_urls = {e.get("url", "").rstrip("/") for e in data}
+        if post_url.rstrip("/") in existing_urls:
+            return
+        data.append({"url": post_url, "title": (title or "").strip()[:200], "slug": (slug or "").strip()[:100]})
+        with open(PUBLISHED_POSTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 
 def build_article_prompt(topic_title, source_texts, matched_keyword=""):
@@ -73,12 +172,13 @@ def build_article_prompt(topic_title, source_texts, matched_keyword=""):
 {src.get('text', '')[:2000]}
 """
 
-    # Build professional internal links suggestion
-    links_context = "STRATEGIC INTERNAL LINKING (Pillar-Cluster Model):\n"
-    for p in INTERNAL_LINKS["pillars"]:
-        links_context += f"  - Pillar Content: {p['topic']}\n"
-        links_context += f"    - Target URL: {p['url']}\n"
-        links_context += f"    - Recommended Anchors: {', '.join(p['anchors'])}\n"
+    # Build internal links list: agent-published posts first (best reference), then static pillars
+    pillars_for_prompt = get_internal_links_for_prompt()
+    links_context = "INTERNAL LINKING (use only these exact URLs):\n"
+    for p in pillars_for_prompt:
+        links_context += f"  - {p['topic']}\n"
+        links_context += f"    - URL: {p['url']}\n"
+        links_context += f"    - Anchors: {', '.join(p['anchors'])}\n"
     
     cat_mapping_str = ", ".join(CATEGORY_MAPPING)
 
@@ -93,11 +193,13 @@ PRIMARY KEYWORD: {matched_keyword or topic_title}
 
 ─── SEO & CONTENT STRATEGY ───
 
-**1. REQUIRED STRATEGIC INTERNAL LINKING:**
-- You MUST include exactly 2-3 internal links from the list below.
-- Integrate them naturally. Use standard HTML: <a href="URL">anchor</a>.
-- Available Pillars:
+**1. INTERNAL LINKING (FOOLPROOF — NO 404s):**
+- You MUST include exactly 2-3 internal links. Use ONLY the exact URLs in the list below.
+- Copy each URL character-for-character. Do NOT invent, modify, or guess any URL. Any link not from this list will cause a 404.
+- Use standard HTML: <a href="EXACT_URL">anchor text</a>. Anchor text can be from the "anchors" list or the topic name.
+- Available links (includes newly published articles and verified pages on kisanportal.org; prefer the most relevant):
 {links_context}
+- Every internal link href in your article MUST be exactly one of the URLs listed above. No exceptions.
 
 **2. NO SEARCH METRICS:**
 - ABSOLUTELY NO mentions of "Google Trends", "spike", "search volume", or "percentages".
