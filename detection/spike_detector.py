@@ -96,16 +96,14 @@ def _calculate_spike_score(cluster_stories, conn):
             factors.append("trending on Google")
             break
 
-    # Factor 5: High-value keywords (tickets, messi, final, etc.)
-    high_value_keywords = [
-        "messi", "ronaldo", "ticket", "final", "draw", "qualify",
-        "disqualified", "ban", "injury", "transfer", "jersey",
-        "opening match", "opening ceremony",
-    ]
+    # Factor 5: High-value agri/scheme keywords (installment, eKYC, eligibility, etc.)
+    high_value_keywords = getattr(config, "HIGH_VALUE_AGRI_KEYWORDS", [
+        "installment", "ekyc", "eligibility", "status check", "new scheme", "enrollment",
+    ])
     for story in cluster_stories:
-        title_lower = story["title"].lower()
+        text = (story.get("title", "") + " " + story.get("summary", "")).lower()
         for hvk in high_value_keywords:
-            if hvk in title_lower:
+            if hvk.lower() in text:
                 score += 15
                 factors.append(f"high-value: {hvk}")
                 break
@@ -132,6 +130,56 @@ def _is_excluded(text):
         if kw.lower() in text_lower:
             return True
     return False
+
+
+def _suggest_article_title(cluster_stories):
+    """
+    Derive a clear, article-ready headline from cluster content (installments, eKYC, schemes).
+    Returns a string or None; when not None, use it as the topic/title for the article.
+    """
+    import re
+    combined = " ".join(s.get("title", "") + " " + s.get("summary", "") for s in cluster_stories)
+    combined_lower = combined.lower()
+    matched_kw = ""
+    for s in cluster_stories:
+        if s.get("matched_keyword"):
+            matched_kw = s["matched_keyword"]
+            break
+
+    # Installment: "PM Kisan 17th Installment Date 2026" or "PM Kisan 18th Installment Released"
+    instal_match = re.search(r"(\d+)(?:st|nd|rd|th)?\s*instal?l?ment", combined_lower, re.I)
+    if instal_match and ("pm kisan" in combined_lower or "pm-kisan" in combined_lower or matched_kw and "kisan" in matched_kw.lower()):
+        num = instal_match.group(1)
+        return f"PM Kisan {num}th Installment Date and Status 2026"
+
+    # eKYC
+    if "ekyc" in combined_lower or "e-kyc" in combined_lower:
+        if "pm kisan" in combined_lower or (matched_kw and "kisan" in matched_kw.lower()):
+            return "PM Kisan eKYC Deadline 2026: How to Complete and Check Status"
+        return "Farmer Scheme eKYC: How to Complete and Last Date 2026"
+
+    # Status check / how to check
+    if "status check" in combined_lower or "check status" in combined_lower:
+        if "pm kisan" in combined_lower or (matched_kw and "kisan" in matched_kw.lower()):
+            return "PM Kisan Status Check 2026: How to Check Payment and Beneficiary Status"
+        if "pmfby" in combined_lower or "fasal bima" in combined_lower:
+            return "PMFBY Claim Status Check: How to Check Crop Insurance Status"
+
+    # Enrollment / registration
+    if "enrollment" in combined_lower or "enrolment" in combined_lower or "registration" in combined_lower:
+        if "pmfby" in combined_lower or "rabi" in combined_lower or "kharif" in combined_lower:
+            return "PMFBY Rabi/Kharif Enrollment 2025-26: Last Date and How to Apply"
+        if "enam" in combined_lower or "e-nam" in combined_lower:
+            return "e-NAM 2.0 Registration: Mandi Registration and Price Guide"
+
+    # New scheme / announced
+    if "new scheme" in combined_lower or "launched" in combined_lower or "announced" in combined_lower:
+        for s in cluster_stories:
+            t = s.get("title", "")
+            if len(t) > 15 and len(t) < 80:
+                return t  # Use the story title as the article title
+
+    return None
 
 
 def detect_spikes(all_stories, trends_data=None):
@@ -224,11 +272,15 @@ def detect_spikes(all_stories, trends_data=None):
 
         # Only report clusters with meaningful score
         if score >= min_score:
-            # Pick the best title (longest, most descriptive)
             best_story = max(cluster_stories, key=lambda s: len(s["title"]))
+            # Prefer a clear, article-ready headline (installment, eKYC, status check, etc.)
+            suggested = _suggest_article_title(cluster_stories)
+            topic_title = suggested if suggested else best_story["title"]
+            # Stable hash for Telegram callback and cache
+            story_hash = hashlib.sha256((topic_title + best_story.get("url", "")).encode()).hexdigest()[:16]
 
             trending_topics.append({
-                "topic": best_story["title"],
+                "topic": topic_title,
                 "score": score,
                 "factors": factors,
                 "stories": cluster_stories,
@@ -236,6 +288,7 @@ def detect_spikes(all_stories, trends_data=None):
                 "top_url": best_story.get("url", ""),
                 "matched_keyword": best_story.get("matched_keyword", ""),
                 "story_count": len(cluster_stories),
+                "story_hash": story_hash,
             })
 
     # Sort by score (highest first)

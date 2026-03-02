@@ -162,6 +162,27 @@ def run_scan():
     logger.info(f"\n🔬 Analyzing {len(all_stories)} total stories...")
     trending_topics = detect_spikes(all_stories, trends_data)
 
+    # When few or no spike topics, inject one priority content idea (scheme updates, installments, eKYC, guides)
+    content_ideas = getattr(config, "CONTENT_IDEAS", [])
+    if content_ideas and len(trending_topics) < 2:
+        import hashlib
+        day_index = (datetime.utcnow().date() - datetime(2025, 1, 1).date()).days % max(len(content_ideas), 1)
+        idea = content_ideas[day_index] if content_ideas else None
+        if idea:
+            idea_hash = hashlib.sha256(("content_idea_" + idea["topic"]).encode()).hexdigest()[:16]
+            trending_topics.append({
+                "topic": idea["topic"],
+                "score": 50.0,
+                "factors": ["priority content idea (scheme/installment/guide)"],
+                "stories": [],
+                "sources": ["Kisan Portal editorial"],
+                "top_url": "",
+                "matched_keyword": idea.get("matched_keyword", "agriculture"),
+                "story_count": 0,
+                "story_hash": idea_hash,
+            })
+            logger.info(f"   📌 Injected priority topic: {idea['topic'][:50]}...")
+
     if not trending_topics:
         logger.info("✅ No new trending topics detected this cycle.")
         # Always send a scan summary so user knows the agent is working

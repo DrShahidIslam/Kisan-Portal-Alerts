@@ -134,6 +134,56 @@ EXCLUDE_KEYWORDS = [
 # Combined master list for filtering
 ALL_KEYWORDS = CENTRAL_SCHEMES + STATE_SCHEMES + GENERAL_AGRI_KEYWORDS
 
+# High-value content angles: stories matching these get a scoring boost and a clearer article title
+HIGH_VALUE_AGRI_KEYWORDS = [
+    "installment", "instalment", "ekyc", "e-kyc", "eKYC", "last date", "deadline",
+    "eligibility", "status check", "new scheme", "enrollment", "enrolment",
+    "how to apply", "beneficiary", "released", "announced", "registration",
+    "last date", "extended", "apply online", "portal", "pm kisan", "pmfby",
+]
+
+# Priority content ideas when there are few or no spike topics.
+# Covers all schemes on the site (central + state) and farmer/agri angles. Rotated by day.
+# Topic = article headline; matched_keyword used for category assignment.
+CONTENT_IDEAS = [
+    # PM Kisan
+    {"topic": "PM Kisan eKYC Deadline 2026: How to Complete and Check Status", "matched_keyword": "PM Kisan"},
+    {"topic": "PM Kisan Latest Installment Date and Payment Status 2026", "matched_keyword": "PM Kisan"},
+    {"topic": "PM Kisan Beneficiary List and Status Check Online", "matched_keyword": "PM Kisan"},
+    # PMFBY & crop insurance
+    {"topic": "PMFBY Rabi Enrollment 2025-26: Last Date and How to Apply", "matched_keyword": "PMFBY"},
+    {"topic": "PMFBY Claim Status Check and Crop Insurance Guide", "matched_keyword": "PMFBY"},
+    # KCC, KVP, e-NAM
+    {"topic": "Kisan Credit Card (KCC) Scheme: Eligibility and Application Process", "matched_keyword": "Kisan Credit Card"},
+    {"topic": "Kisan Vikas Patra (KVP): Interest Rate and How to Open", "matched_keyword": "Kisan Vikas Patra"},
+    {"topic": "e-NAM 2.0 Registration and Mandi Prices: Complete Guide", "matched_keyword": "eNAM"},
+    # Soil Health, Kisan Karz Mochan, Tractor
+    {"topic": "Soil Health Card: How to Download and Use for Farmers", "matched_keyword": "Soil Health Card"},
+    {"topic": "Kisan Karz Mochan Yojana: Eligibility and Debt Relief for Farmers", "matched_keyword": "Kisan Karz Mochan"},
+    {"topic": "PM Kisan Tractor Scheme: Subsidy and How to Apply", "matched_keyword": "PM Kisan Tractor"},
+    # e-Crop, e-Panta, e-Chasa (AP/Telangana)
+    {"topic": "e-Crop Registration and Status Check AP: Complete Guide", "matched_keyword": "e-Crop"},
+    {"topic": "e-Panta Login, Registration and Status Check Andhra Pradesh", "matched_keyword": "e Panta"},
+    {"topic": "e-Panta eKYC and Beneficiary Status 2026", "matched_keyword": "e Panta"},
+    {"topic": "e-Chasa AP: Crop Registration and Farmer Portal Guide", "matched_keyword": "e-Chasa"},
+    # PM Dhan Dhaanya, Dalhan, oilseeds
+    {"topic": "PM Dhan Dhaanya Krishi Yojana (PMDDKY): Eligibility and Benefits", "matched_keyword": "PM Dhan Dhaanya"},
+    {"topic": "Dalhan Aatmanirbharta Mission: Oilseeds and Farmer Support", "matched_keyword": "Dalhan Aatmanirbharta"},
+    # State: Rythu Bharosa, Pik Vima, Kalia, Krishak Bandhu, others
+    {"topic": "Rythu Bharosa / Rythu Bandhu: Eligibility and Payment Status", "matched_keyword": "Rythu Bharosa"},
+    {"topic": "Pik Vima Maharashtra: Rabi Crop Insurance and Enrollment", "matched_keyword": "Pik Vima"},
+    {"topic": "KALIA Yojana Odisha: Eligibility and Payment Status", "matched_keyword": "Kalia Yojana"},
+    {"topic": "Krishak Bandhu West Bengal: Farmer Assistance and Status Check", "matched_keyword": "Krishak Bandhu"},
+    {"topic": "Shetkari Sanman Nidhi Maharashtra: Eligibility and How to Apply", "matched_keyword": "Shetkari Sanman Nidhi"},
+    {"topic": "Bhavantar Bhugtan Yojana: Price Deficiency Payment for Farmers", "matched_keyword": "Bhavantar Bhugpaye"},
+    # MSP, FPO, general agri
+    {"topic": "MSP and Procurement: Rabi Crops Minimum Support Price 2025-26", "matched_keyword": "MSP"},
+    {"topic": "FPO Registration and Farmer Producer Organisation Benefits", "matched_keyword": "FPO"},
+    {"topic": "Agriculture Infrastructure Fund: Eligibility and How to Apply", "matched_keyword": "Agricultural Infrastructure Fund"},
+    {"topic": "Namo Drone Didi Scheme: Subsidy and Training for Women", "matched_keyword": "Namo Drone Didi"},
+    {"topic": "Natural Farming in India: Schemes and Benefits for Farmers", "matched_keyword": "Natural Farming"},
+]
+
 # ── Detection Settings ────────────────────────────────────────────────
 SPIKE_THRESHOLD = 2.0           # 2x above the rolling average = spike
 SPIKE_MIN_SCORE = 40            # Minimum spike score to trigger alert
