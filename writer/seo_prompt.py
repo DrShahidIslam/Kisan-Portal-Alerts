@@ -231,21 +231,39 @@ CRITICAL: TITLE is your article H1. It must exactly match the main topic and app
    
    ## Frequently Asked Questions
    
-   [REQUIRED: 3–4 real Q&As. Each Kadence pane "title" = full question (e.g. "What is the PM Kisan 15th installment date?"). Each <p> = 2–4 sentence answer. Same Q&As go in the FAQ schema in step 8.]
+   CRITICAL: Readers must SEE each question as a visible heading before the answer. You MUST output the Kadence accordion HTML below. Each pane "title" attribute is the QUESTION that appears as the clickable heading; the <p> inside is the answer. Do NOT replace this with plain paragraphs—without the accordion, questions will be invisible.
+   
+   Example: For "What is the purpose of KCC?" the pane must have title="What is the purpose of the Kisan Credit Card Scheme?" so the question is visible; then the <p> contains the answer.
+   
+   Output this structure with 3–4 real Q&As (replace the bracketed text with actual question and answer):
    
    <!-- wp:kadence/accordion {{"id":"3"}} -->
    <div class="wp-block-kadence-accordion kt-accordion-id_3">
-     <!-- wp:kadence/pane {{"id":"3a","title":"What is [topic-specific question]?"}} -->
+     <!-- wp:kadence/pane {{"id":"3a","title":"What is the purpose of [scheme/topic]?"}} -->
      <div class="wp-block-kadence-pane kt-accordion-pane-3a"><div class="kt-accordion-panel"><div class="kt-accordion-panel-inner">
        <!-- wp:paragraph --><p>[2–4 sentence answer.]</p><!-- /wp:paragraph -->
      </div></div></div>
      <!-- /wp:kadence/pane -->
-     [Add 2–3 more panes 3b, 3c, 3d with real questions and answers]
+     <!-- wp:kadence/pane {{"id":"3b","title":"Who is eligible for [scheme]?"}} -->
+     <div class="wp-block-kadence-pane kt-accordion-pane-3b"><div class="kt-accordion-panel"><div class="kt-accordion-panel-inner">
+       <!-- wp:paragraph --><p>[Answer.]</p><!-- /wp:paragraph -->
+     </div></div></div>
+     <!-- /wp:kadence/pane -->
+     <!-- wp:kadence/pane {{"id":"3c","title":"What documents are required?"}} -->
+     <div class="wp-block-kadence-pane kt-accordion-pane-3c"><div class="kt-accordion-panel"><div class="kt-accordion-panel-inner">
+       <!-- wp:paragraph --><p>[Answer.]</p><!-- /wp:paragraph -->
+     </div></div></div>
+     <!-- /wp:kadence/pane -->
+     <!-- wp:kadence/pane {{"id":"3d","title":"[Fourth question in full?]"}} -->
+     <div class="wp-block-kadence-pane kt-accordion-pane-3d"><div class="kt-accordion-panel"><div class="kt-accordion-panel-inner">
+       <!-- wp:paragraph --><p>[Answer.]</p><!-- /wp:paragraph -->
+     </div></div></div>
+     <!-- /wp:kadence/pane -->
    </div>
    <!-- /wp:kadence/accordion -->
 7. ---CONTENT_END---
 8. ---FAQ_START---
-REQUIRED: Output the FAQPage JSON-LD schema. Use 3–4 REAL questions (start with What/How/When/Can/Is). The "name" field = exact question text. The "text" field = full 2–4 sentence answer. These must match the accordion Q&As in step 6. Do NOT output placeholder text like "First real question" or "Full answer" — write the actual question and answer text.
+REQUIRED: Output the FAQPage JSON-LD schema. Use 3–4 REAL questions (each must end with ?). The "name" field = exact question text (same as the accordion pane "title" in step 6). The "text" field = full 2–4 sentence answer. Do NOT output placeholder text like "First real question" or "Full answer" — write the actual question and answer text.
 <script type="application/ld+json">
 {{
   "@context": "https://schema.org",
