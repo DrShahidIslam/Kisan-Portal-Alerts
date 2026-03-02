@@ -213,51 +213,45 @@ PRIMARY KEYWORD: {matched_keyword or topic_title}
 - Bold important agriculture terms using **term**.
 
 ─── ARTICLE STRUCTURE ───
-1. TITLE: Catchy SEO title (No markdown, no quotes, max 60 chars).
-2. META_DESCRIPTION: Professional summary (150 chars).
-3. SLUG: lowercase-kebab-case (No markdown).
-4. TAGS: CSV list of 5 tags.
-5. CATEGORY: ONE exact slug from: {cat_mapping_str}. Use "news" only when the topic does not match any of the scheme categories above (e.g. general agri news, policy roundups).
+1. TITLE: One short, punchy headline. STRICT: maximum 60 characters. No colons at the end, no filler words. Example: "PM Kisan 15th Installment Date 2025" or "e-NAM Registration: Step-by-Step Guide". Output only the headline, no markdown or quotes.
+2. META_DESCRIPTION: One sentence summary, 140–155 characters, for search results.
+3. SLUG: Short URL slug: 3–6 words, lowercase, hyphens only. Maximum 50 characters. Example: pm-kisan-15th-installment-2025 or enam-registration-guide. No markdown.
+4. TAGS: Comma-separated list of exactly 5 tags (e.g. PM Kisan, installment, farmers, scheme, 2025).
+5. CATEGORY: ONE exact slug from: {cat_mapping_str}. Use "news" only when the topic does not match any scheme category.
 6. ---CONTENT_START---
-   [Intro Paragraph]
+   [Concise intro paragraph, 2–4 sentences]
    
-   ## [Main Topic H2]
-   [Detailed explanation with bullet points if helpful]
+   ## [First H2 – main topic]
+   [Clear, scannable content; use bullet points where helpful]
    
-   ## [Section H2]
-   [More details]
+   ## [Second H2]
+   [More detail]
    
    ## Frequently Asked Questions
    
+   [Kadence accordion HTML with REAL questions and answers – see FAQ_START below for the exact questions to use. Each pane "title" must be a real question; each <p> must be a real 2–4 sentence answer.]
+   
    <!-- wp:kadence/accordion {{"id":"3"}} -->
    <div class="wp-block-kadence-accordion kt-accordion-id_3">
-     <!-- wp:kadence/pane {{"id":"3a","title":"Question 1?"}} -->
+     <!-- wp:kadence/pane {{"id":"3a","title":"Your first real question?"}} -->
      <div class="wp-block-kadence-pane kt-accordion-pane-3a"><div class="kt-accordion-panel"><div class="kt-accordion-panel-inner">
-       <!-- wp:paragraph --><p>Answer 1.</p><!-- /wp:paragraph -->
+       <!-- wp:paragraph --><p>Real answer 2–4 sentences.</p><!-- /wp:paragraph -->
      </div></div></div>
      <!-- /wp:kadence/pane -->
-     <!-- wp:kadence/pane {{"id":"3b","title":"Question 2?"}} -->
-     <div class="wp-block-kadence-pane kt-accordion-pane-3b"><div class="kt-accordion-panel"><div class="kt-accordion-panel-inner">
-       <!-- wp:paragraph --><p>Answer 2.</p><!-- /wp:paragraph -->
-     </div></div></div>
-     <!-- /wp:kadence/pane -->
+     [Repeat for 3–4 questions total with ids 3b, 3c, 3d]
    </div>
    <!-- /wp:kadence/accordion -->
 7. ---CONTENT_END---
 8. ---FAQ_START---
+You MUST output valid FAQPage schema with 3–4 REAL questions that farmers actually search for (e.g. "What is the PM Kisan installment date?", "How do I check PM Kisan status?"). Each "name" is the question; each "text" is a 2–4 sentence answer. Do NOT use placeholder text like "Insert Question 1" or "Answer 1".
 <script type="application/ld+json">
 {{
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    {{
-      "@type": "Question",
-      "name": "Insert Question 1",
-      "acceptedAnswer": {{
-        "@type": "Answer",
-        "text": "Insert detailed answer 1."
-      }}
-    }}
+    {{ "@type": "Question", "name": "First real question in full?", "acceptedAnswer": {{ "@type": "Answer", "text": "Full answer in 2–4 sentences." }} }},
+    {{ "@type": "Question", "name": "Second real question?", "acceptedAnswer": {{ "@type": "Answer", "text": "Full answer." }} }},
+    {{ "@type": "Question", "name": "Third real question?", "acceptedAnswer": {{ "@type": "Answer", "text": "Full answer." }} }}
   ]
 }}
 </script>
@@ -268,17 +262,11 @@ PRIMARY KEYWORD: {matched_keyword or topic_title}
 
 def build_image_prompt(topic_title, article_content_snippet=""):
     """
-    Build a cinematic prompt for Gemini Imagen.
+    Build a clear, editorial-style prompt for AI image generation (Gemini Flash / Imagen / Pollinations).
     """
-    prompt = f"""Cinematic editorial photography of: {topic_title}.
-Setting: Lush Indian agricultural landscape, vibrant green fields, professional lighting, 8k resolution.
-Main subject: A thriving crop field or a professional farmer using digital tools.
-Style: Professional National Geographic style, highly detailed, photorealistic.
-
-CRITICAL: 
-- ABSOLUTELY NO TEXT, NO LOGOS, NO LETTERS.
-- NO cartoon or animation.
-- High quality stock photography feel.
-"""
+    prompt = f"""Professional editorial photograph for an Indian agriculture news article. Topic: {topic_title}.
+Scene: Lush Indian farm landscape, green fields or crops, natural daylight, photorealistic.
+Style: High-quality stock photo, National Geographic style, no people in frame (or distant farmer in field).
+Rules: No text, no logos, no watermarks, no cartoons. Landscape orientation, 16:9 suitable for featured image."""
 
     return prompt

@@ -182,15 +182,16 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             # Strip markdown artifacts and quotes
             return re.sub(r'[*_#`"]', '', val).strip()
 
-        # ── 1. TITLE ──
-        # Best: 1. TITLE: or TITLE:
+        # ── 1. TITLE ── (enforce max 60 chars for SEO)
+        MAX_TITLE_LEN = 60
         title_match = re.search(r'(?:1\.|TITLE:)\s*(.+?)(?:\n|2\.|META_DESCRIPTION:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
         if title_match:
             result["title"] = clean_meta(title_match.group(1))
         else:
-            # Fallback: First non-empty line
             lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
             result["title"] = clean_meta(lines[0]) if lines else "Agriculture Update"
+        if len(result["title"]) > MAX_TITLE_LEN:
+            result["title"] = result["title"][:MAX_TITLE_LEN].rsplit(" ", 1)[0] or result["title"][:MAX_TITLE_LEN]
 
         # ── 2. META_DESCRIPTION ──
         meta_match = re.search(r'(?:2\.|META_DESCRIPTION:)\s*(.+?)(?:\n|3\.|SLUG:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
@@ -204,12 +205,14 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             else:
                 result["meta_description"] = result["title"][:155]
 
-        # ── 3. SLUG ──
+        # ── 3. SLUG ── (short, max 50 chars, lowercase-kebab)
+        MAX_SLUG_LEN = 50
         slug_match = re.search(r'(?:3\.|SLUG:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
         if slug_match:
-            result["slug"] = clean_meta(slug_match.group(1).lower())
+            result["slug"] = re.sub(r'-+', '-', clean_meta(slug_match.group(1).lower()).strip('-'))
         else:
             result["slug"] = re.sub(r'[^a-z0-9]+', '-', result["title"].lower()).strip('-')
+        result["slug"] = result["slug"][:MAX_SLUG_LEN].rstrip('-')
 
         # ── 4. TAGS ──
         tags_match = re.search(r'(?:4\.|TAGS:)\s*(.+?)(?:\n|5\.|CATEGORY:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
@@ -241,13 +244,18 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         if not result["content"]:
             result["content"] = raw_text
 
-        # ── 7. FAQ ──
+        # ── 7. FAQ ── (must contain real FAQPage schema; reject placeholder-only)
         faq_match = re.search(r'---FAQ_START---(.*?)---FAQ_END---', raw_text, re.DOTALL)
         if faq_match:
             result["faq_html"] = re.sub(r'<!--.*?-->', '', faq_match.group(1), flags=re.DOTALL).strip()
         else:
             schema_match = re.search(r'<script type="application/ld\+json">.*?</script>', raw_text, re.DOTALL)
             result["faq_html"] = schema_match.group(0) if schema_match else ""
+        # If FAQ is placeholder-only (no real questions), clear it so we don't publish fake schema
+        if result["faq_html"] and (
+            "Insert Question" in result["faq_html"] or "Insert detailed answer" in result["faq_html"]
+        ):
+            result["faq_html"] = ""
 
         # Markdown to HTML Force Conversion
         import markdown

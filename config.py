@@ -33,6 +33,9 @@ WP_URL = os.getenv("WP_URL", "https://kisanportal.org")
 WP_USERNAME = os.getenv("WP_USERNAME")
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD")
 
+# Optional: Unsplash API for high-quality stock photos (50 req/hr free). If set, we try Unsplash before AI image gen.
+UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "").strip() or None
+
 # ── RSS Feeds ─────────────────────────────────────────────────────────
 # Use active, working feeds. Feeds in AGRI_ONLY_FEEDS: accept all entries (still apply EXCLUDE_KEYWORDS).
 # Others (ET, IE, etc.): require keyword match for agriculture/farmer/scheme relevance.

@@ -223,6 +223,46 @@ def _try_source_image(source_url, output_path_webp, output_path_jpg):
     return None, None
 
 
+def _try_unsplash_image(article_title, output_path_webp, output_path_jpg):
+    """Try Unsplash API for a high-quality stock photo (optional; needs UNSPLASH_ACCESS_KEY). Returns (webp, jpg) or (None, None)."""
+    key = getattr(config, "UNSPLASH_ACCESS_KEY", None)
+    if not key:
+        return None, None
+    try:
+        import requests
+        # Build search query: prefer agriculture/farm terms; fallback to first few words of title
+        q = re.sub(r"[^a-zA-Z0-9\s]", "", article_title)[:40].strip()
+        if not q or len(q.split()) < 2:
+            q = "indian agriculture farm"
+        # Unsplash search
+        r = requests.get(
+            "https://api.unsplash.com/search/photos",
+            params={"query": q, "client_id": key, "per_page": 1, "orientation": "landscape"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        results = data.get("results") or []
+        if not results:
+            return None, None
+        url = results[0].get("urls", {}).get("regular") or results[0].get("urls", {}).get("small")
+        if not url:
+            return None, None
+        img_r = requests.get(url, timeout=15)
+        img_r.raise_for_status()
+        image_bytes = img_r.content
+        if len(image_bytes) < 5000:
+            return None, None
+        result_webp = _compress_to_webp(image_bytes, output_path_webp)
+        result_jpg = _compress_to_jpg(image_bytes, output_path_jpg)
+        if result_webp and result_jpg:
+            logger.info(f"    Image from Unsplash: {result_webp}, {result_jpg}")
+            return result_webp, result_jpg
+    except Exception as e:
+        logger.warning(f"    Unsplash failed: {e}")
+    return None, None
+
+
 def _try_pollinations_image(article_title, output_path_webp, output_path_jpg):
     """Try Pollinations.ai (free). Returns (webp, jpg) or (None, None)."""
     return _generate_pollinations_image(article_title, output_path_webp, output_path_jpg)
@@ -289,6 +329,12 @@ def generate_featured_image(article_title, save_dir=None, source_url=None):
 
     logger.info(f"  Generating featured image for: {article_title[:60]}")
 
+    # 0. Optional: Unsplash (high-quality real photos when key is set)
+    if getattr(config, "UNSPLASH_ACCESS_KEY", None):
+        webp, jpg = _try_unsplash_image(article_title, output_path_webp, output_path_jpg)
+        if webp and jpg:
+            return webp, jpg
+
     # 1. Free tier: Gemini 2.5 Flash Image
     webp, jpg = _try_gemini_flash_image(article_title, output_path_webp, output_path_jpg)
     if webp and jpg:
@@ -348,8 +394,8 @@ def _generate_pollinations_image(article_title, output_path_webp, output_path_jp
     try:
         logger.info(f"    Fetching high-quality image from Pollinations (Flux)...")
         
-        # Build prompt: Professional Indian agriculture scene
-        prompt = f"Professional high-quality editorial photography of Indian agriculture, thriving green fields, sunset lighting, realistic, 8k resolution, National Geographic style, for: {article_title}. No text, no logos, no watermark."
+        # Build prompt: clear, editorial, no text (better AI image quality)
+        prompt = f"Professional editorial photograph, Indian agriculture, farm or crop field, natural daylight, photorealistic, high quality, for article: {article_title}. No text, no logos, no watermark, landscape."
         safe_prompt = urllib.parse.quote(prompt)
         
         # Use FLUX model on Pollinations for premium quality
