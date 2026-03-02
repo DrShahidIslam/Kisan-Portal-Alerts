@@ -280,14 +280,28 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         # Markdown to HTML Force Conversion
         import markdown
         result["content_html"] = markdown.markdown(
-            result["content"], 
+            result["content"],
             extensions=['nl2br', 'sane_lists']
         )
 
-        # Assembly
-        result["full_content"] = result["content_html"]
+        # Assembly: wrap body in padded container (medium padding on all sides, below featured image)
+        PADDING_STYLE = "padding: 1.5rem;"
+        wrapped_body = (
+            f'<div class="kisan-article-body entry-content-wrap" style="{PADDING_STYLE}">'
+            f"\n{result['content_html']}\n</div>"
+        )
+
+        # FAQ schema: in Gutenberg Custom HTML block; hidden so it never shows as text (Google still reads it)
+        faq_block_output = ""
         if result["faq_html"]:
-            result["full_content"] += "\n\n" + result["faq_html"]
+            hidden_schema = (
+                '<div class="kisan-faq-schema" style="display:none;position:absolute;left:-9999px;" aria-hidden="true">'
+                + result["faq_html"]
+                + "</div>"
+            )
+            faq_block_output = "\n\n<!-- wp:html -->\n" + hidden_schema + "\n<!-- /wp:html -->"
+
+        result["full_content"] = wrapped_body + faq_block_output
 
         return result
 
