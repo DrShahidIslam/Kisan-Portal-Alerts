@@ -334,6 +334,14 @@ def _handle_write_article(topic_hash=None):
         send_simple_message("⏸️ Gemini API quota exhausted. Article generation paused until next cycle.")
         return
 
+    if not getattr(config, "GEMINI_API_KEYS", None) or not config.GEMINI_API_KEYS:
+        logger.error("No Gemini API key configured. Add GEMINI_API_KEY or GEMINI_API_KEYS to .env in the project root.")
+        send_simple_message(
+            "❌ Gemini API key not set.\n\n"
+            "Add GEMINI_API_KEY=your_key to a .env file in the project folder (same folder as main.py), then run again."
+        )
+        return
+
     # Don't start a new one if an article is already pending review
     if _pending_article or load_pending_state():
         title = (_pending_article or {}).get("title", "Unknown")
@@ -425,7 +433,10 @@ def _handle_write_article(topic_hash=None):
             else:
                 send_simple_message("🖼️ Image skipped (SKIP_AI_IMAGE=enabled). You can approve the article without a featured image.")
         else:
-            send_simple_message("❌ Article generation failed. Try again later.")
+            send_simple_message(
+                "❌ Article generation failed (Gemini returned empty or output could not be parsed). "
+                "Check agent logs for details or try again."
+            )
     except Exception as e:
         error_str = str(e)
         logger.error(f"Article generation error: {e}")

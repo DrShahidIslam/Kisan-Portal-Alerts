@@ -112,11 +112,15 @@ def generate_article(topic, source_urls=None):
         }]
 
     # ── Step 2: Build the prompt ──────────────────────────────────
-    prompt = build_article_prompt(
-        topic_title=topic.get("topic", "Agriculture News Update"),
-        source_texts=source_texts,
-        matched_keyword=topic.get("matched_keyword", "")
-    )
+    try:
+        prompt = build_article_prompt(
+            topic_title=topic.get("topic", "Agriculture News Update"),
+            source_texts=source_texts,
+            matched_keyword=topic.get("matched_keyword", ""),
+        )
+    except Exception as e:
+        logger.error(f"  ❌ Failed to build prompt: {e}")
+        return None
 
     # ── Step 3: Call Gemini ───────────────────────────────────────
     try:
@@ -125,7 +129,10 @@ def generate_article(topic, source_urls=None):
             model=config.GEMINI_MODEL,
             contents=prompt
         )
-        raw_output = response.text
+        raw_output = (getattr(response, "text", None) or "").strip()
+        if not raw_output:
+            logger.error("  ❌ Gemini returned empty or blocked content (no text). Try again or check API/safety settings.")
+            return None
         logger.info(f"  ✅ Gemini responded ({len(raw_output)} chars)")
         logger.debug(f"RAW AI OUTPUT:\n{raw_output}")
 
@@ -135,22 +142,28 @@ def generate_article(topic, source_urls=None):
 
     # ── Step 4: Parse structured output ───────────────────────────
     article = _parse_article_output(
-        raw_output, 
-        matched_keyword=topic.get("matched_keyword", ""), 
-        topic_title=topic.get("topic", "")
+        raw_output,
+        matched_keyword=topic.get("matched_keyword", ""),
+        topic_title=topic.get("topic", ""),
     )
 
     if article:
+        # Ensure we have usable content (model sometimes omits markers)
+        if len(article.get("content", "") or "") < 100:
+            logger.warning("  ⚠️ Parsed content too short; treating as parse failure.")
+            logger.debug(f"  Raw output preview: {raw_output[:500]}...")
+            return None
         article["sources_used"] = [s.get("source_domain", "") for s in source_texts]
         article["word_count"] = len(article.get("content_html", "").split())
         # Assign category from topic: match scheme categories or default to "news"
         article["category"] = get_category_for_topic(
             topic.get("topic", ""),
-            topic.get("matched_keyword", "")
+            topic.get("matched_keyword", ""),
         )
         logger.info(f"  ✅ Article generated: '{article['title']}' (category: {article['category']})")
     else:
-        logger.error("  ❌ Failed to parse Gemini output")
+        logger.error("  ❌ Failed to parse Gemini output. Check that the model returns TITLE, CONTENT_START/END, etc.")
+        logger.debug(f"  Raw output preview: {raw_output[:400]}...")
 
     return article
 
@@ -196,7 +209,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         if slug_match:
             result["slug"] = clean_meta(slug_match.group(1).lower())
         else:
-            result["slug"] = re.sub(r'[^a-z0-0]+', '-', result["title"].lower()).strip('-')
+            result["slug"] = re.sub(r'[^a-z0-9]+', '-', result["title"].lower()).strip('-')
 
         # ── 4. TAGS ──
         tags_match = re.search(r'(?:4\.|TAGS:)\s*(.+?)(?:\n|5\.|CATEGORY:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
@@ -222,9 +235,11 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             if len(fuzzy_parts) > 1:
                 result["content"] = fuzzy_parts[1].split("---CONTENT_END---")[0].strip()
             else:
-                # Absolute fallback: Everything after the first 3 lines
+                # Absolute fallback: Everything after the first 5 lines (skip TITLE/META/SLUG/TAGS/CATEGORY)
                 lines = raw_text.split("\n")
-                result["content"] = "\n".join(lines[3:]).strip() if len(lines) > 3 else raw_text
+                result["content"] = "\n".join(lines[5:]).strip() if len(lines) > 5 else raw_text
+        if not result["content"]:
+            result["content"] = raw_text
 
         # ── 7. FAQ ──
         faq_match = re.search(r'---FAQ_START---(.*?)---FAQ_END---', raw_text, re.DOTALL)
@@ -249,7 +264,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         return result
 
     except Exception as e:
-        logger.error(f"  ❌ Parse error: {e}")
+        logger.exception("  ❌ Parse error")
         return None
 
 

@@ -122,16 +122,18 @@ def get_internal_links_for_prompt():
     Return full list of internal link options: static pillars + agent-published posts.
     Newly published posts are listed first so they are preferred as the best reference for future articles.
     """
-    static_urls = {p["url"].rstrip("/") for p in INTERNAL_LINKS_PILLARS}
-    published = _load_published_posts()
-    # Prepend published posts (most recent first if we stored in order), avoid duplicate URLs
-    combined = []
-    for p in published:
-        u = (p["url"] or "").rstrip("/")
-        if u and u not in static_urls:
-            combined.append(p)
-            static_urls.add(u)
-    return combined + INTERNAL_LINKS_PILLARS
+    try:
+        static_urls = {p.get("url", "").rstrip("/") for p in INTERNAL_LINKS_PILLARS if p.get("url")}
+        published = _load_published_posts()
+        combined = []
+        for p in published:
+            u = (p.get("url") or "").rstrip("/")
+            if u and u not in static_urls:
+                combined.append(p)
+                static_urls.add(u)
+        return combined + INTERNAL_LINKS_PILLARS
+    except Exception:
+        return list(INTERNAL_LINKS_PILLARS)
 
 
 def add_published_post(post_url, title, slug=""):

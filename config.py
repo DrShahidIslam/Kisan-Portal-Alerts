@@ -3,17 +3,30 @@ Central configuration for the Kisan Portal Alerts App.
 All settings, keywords, RSS feeds, and thresholds are defined here.
 """
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from project root so it works regardless of current working directory
+_PROJECT_ROOT = Path(__file__).resolve().parent
+load_dotenv(_PROJECT_ROOT / ".env")
 
 # ── API Keys ──────────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
-_gemini_keys_env = os.getenv("GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY", ""))
-GEMINI_API_KEYS = [k.strip() for k in _gemini_keys_env.split(",") if k.strip()]
+# Collect all Gemini/Google AI keys for rotation (rate-limit fallback). Order: GEMINI_API_KEYS, then GEMINI_API_KEY, then GOOGLE_API_KEY.
+_gemini_keys_list = []
+for env_name in ("GEMINI_API_KEYS", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
+    val = os.getenv(env_name, "").strip()
+    if not val:
+        continue
+    for k in val.split(","):
+        k = k.strip()
+        if k and k not in _gemini_keys_list:
+            _gemini_keys_list.append(k)
+GEMINI_API_KEYS = _gemini_keys_list
 GEMINI_API_KEY = GEMINI_API_KEYS[0] if GEMINI_API_KEYS else None
 
 WP_URL = os.getenv("WP_URL", "https://kisanportal.org")
