@@ -193,12 +193,11 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         if len(result["title"]) > MAX_TITLE_LEN:
             result["title"] = result["title"][:MAX_TITLE_LEN].rsplit(" ", 1)[0] or result["title"][:MAX_TITLE_LEN]
 
-        # ── 2. META_DESCRIPTION ──
+        # ── 2. META_DESCRIPTION ── (attractive for search; 140–155 chars ideal)
         meta_match = re.search(r'(?:2\.|META_DESCRIPTION:)\s*(.+?)(?:\n|3\.|SLUG:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
         if meta_match:
             result["meta_description"] = clean_meta(meta_match.group(1))
         else:
-            # Fallback: second line if it looks like a description (long)
             lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
             if len(lines) > 1 and len(lines[1]) > 50:
                 result["meta_description"] = clean_meta(lines[1])
@@ -244,18 +243,39 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         if not result["content"]:
             result["content"] = raw_text
 
-        # ── 7. FAQ ── (must contain real FAQPage schema; reject placeholder-only)
-        faq_match = re.search(r'---FAQ_START---(.*?)---FAQ_END---', raw_text, re.DOTALL)
-        if faq_match:
-            result["faq_html"] = re.sub(r'<!--.*?-->', '', faq_match.group(1), flags=re.DOTALL).strip()
-        else:
-            schema_match = re.search(r'<script type="application/ld\+json">.*?</script>', raw_text, re.DOTALL)
-            result["faq_html"] = schema_match.group(0) if schema_match else ""
-        # If FAQ is placeholder-only (no real questions), clear it so we don't publish fake schema
-        if result["faq_html"] and (
-            "Insert Question" in result["faq_html"] or "Insert detailed answer" in result["faq_html"]
-        ):
+        # Meta description: ensure 140–155 chars and attractive (fallback from content if too short)
+        md = (result.get("meta_description") or result["title"]).strip()[:155]
+        if len(md) < 100 and result["content"]:
+            first = result["content"].split(".")[0].strip()[:120]
+            if first:
+                md = (md + " " + first).strip()[:155]
+        result["meta_description"] = md or result["title"][:155]
+
+        # ── 7. FAQ ── Extract FAQPage schema; keep only if it has real questions (not placeholders)
+        result["faq_html"] = ""
+        faq_block = re.search(r'---FAQ_START---(.*?)---FAQ_END---', raw_text, re.DOTALL)
+        if faq_block:
+            result["faq_html"] = re.sub(r'<!--.*?-->', '', faq_block.group(1), flags=re.DOTALL).strip()
+        if not result["faq_html"]:
+            # Fallback: find any FAQPage JSON-LD script in the response
+            schema_match = re.search(
+                r'<script\s+type=["\']application/ld\+json["\'].*?FAQPage.*?</script>',
+                raw_text, re.DOTALL | re.IGNORECASE
+            )
+            if schema_match:
+                result["faq_html"] = schema_match.group(0).strip()
+        # Reject placeholder-only schema (so we don't publish fake FAQ)
+        placeholder_phrases = (
+            "Insert Question", "Insert detailed answer", "First real question in full",
+            "Second real question?", "Third real question?", "[write actual question]",
+            "[Write 2–4 sentence answer", "[Write answer.]"
+        )
+        if result["faq_html"] and any(p in result["faq_html"] for p in placeholder_phrases):
             result["faq_html"] = ""
+        # Require at least one real question (name field contains a question ending with ?)
+        if result["faq_html"] and '"name":' in result["faq_html"]:
+            if not re.search(r'"name":\s*"[^"]*\?"', result["faq_html"]):
+                result["faq_html"] = ""
 
         # Markdown to HTML Force Conversion
         import markdown

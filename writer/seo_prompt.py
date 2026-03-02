@@ -213,45 +213,47 @@ PRIMARY KEYWORD: {matched_keyword or topic_title}
 - Bold important agriculture terms using **term**.
 
 ─── ARTICLE STRUCTURE ───
-1. TITLE: One short, punchy headline. STRICT: maximum 60 characters. No colons at the end, no filler words. Example: "PM Kisan 15th Installment Date 2025" or "e-NAM Registration: Step-by-Step Guide". Output only the headline, no markdown or quotes.
-2. META_DESCRIPTION: One sentence summary, 140–155 characters, for search results.
-3. SLUG: Short URL slug: 3–6 words, lowercase, hyphens only. Maximum 50 characters. Example: pm-kisan-15th-installment-2025 or enam-registration-guide. No markdown.
-4. TAGS: Comma-separated list of exactly 5 tags (e.g. PM Kisan, installment, farmers, scheme, 2025).
-5. CATEGORY: ONE exact slug from: {cat_mapping_str}. Use "news" only when the topic does not match any scheme category.
+CRITICAL: TITLE is your article H1. It must exactly match the main topic and appear as the primary headline. META_DESCRIPTION is used in search results — make it compelling (benefit, number, or year) so users click.
+
+1. TITLE: The article headline (and H1). Maximum 60 characters. Must be a true reflection of the main topic. Examples: "PM Kisan 15th Installment Date 2025" or "How to Check e-NAM Registration Status Online". No markdown or quotes.
+2. META_DESCRIPTION: Attractive one-line summary for Google (140–155 chars). Include a hook: key benefit, date, or number. Example: "PM Kisan 15th installment date announced for 2025. Check eligibility, status and payment schedule here."
+3. SLUG: 3–6 words, lowercase, hyphens only, max 50 chars. Example: pm-kisan-15th-installment-2025
+4. TAGS: Exactly 5 tags, comma-separated.
+5. CATEGORY: ONE slug from: {cat_mapping_str}. Use "news" only if topic does not match a scheme.
 6. ---CONTENT_START---
-   [Concise intro paragraph, 2–4 sentences]
+   [Intro: 2–4 sentences]
    
-   ## [First H2 – main topic]
-   [Clear, scannable content; use bullet points where helpful]
+   ## [H2 – must align with TITLE topic]
+   [Body with bullets where helpful]
    
-   ## [Second H2]
+   ## [Another H2]
    [More detail]
    
    ## Frequently Asked Questions
    
-   [Kadence accordion HTML with REAL questions and answers – see FAQ_START below for the exact questions to use. Each pane "title" must be a real question; each <p> must be a real 2–4 sentence answer.]
+   [REQUIRED: 3–4 real Q&As. Each Kadence pane "title" = full question (e.g. "What is the PM Kisan 15th installment date?"). Each <p> = 2–4 sentence answer. Same Q&As go in the FAQ schema in step 8.]
    
    <!-- wp:kadence/accordion {{"id":"3"}} -->
    <div class="wp-block-kadence-accordion kt-accordion-id_3">
-     <!-- wp:kadence/pane {{"id":"3a","title":"Your first real question?"}} -->
+     <!-- wp:kadence/pane {{"id":"3a","title":"What is [topic-specific question]?"}} -->
      <div class="wp-block-kadence-pane kt-accordion-pane-3a"><div class="kt-accordion-panel"><div class="kt-accordion-panel-inner">
-       <!-- wp:paragraph --><p>Real answer 2–4 sentences.</p><!-- /wp:paragraph -->
+       <!-- wp:paragraph --><p>[2–4 sentence answer.]</p><!-- /wp:paragraph -->
      </div></div></div>
      <!-- /wp:kadence/pane -->
-     [Repeat for 3–4 questions total with ids 3b, 3c, 3d]
+     [Add 2–3 more panes 3b, 3c, 3d with real questions and answers]
    </div>
    <!-- /wp:kadence/accordion -->
 7. ---CONTENT_END---
 8. ---FAQ_START---
-You MUST output valid FAQPage schema with 3–4 REAL questions that farmers actually search for (e.g. "What is the PM Kisan installment date?", "How do I check PM Kisan status?"). Each "name" is the question; each "text" is a 2–4 sentence answer. Do NOT use placeholder text like "Insert Question 1" or "Answer 1".
+REQUIRED: Output the FAQPage JSON-LD schema. Use 3–4 REAL questions (start with What/How/When/Can/Is). The "name" field = exact question text. The "text" field = full 2–4 sentence answer. These must match the accordion Q&As in step 6. Do NOT output placeholder text like "First real question" or "Full answer" — write the actual question and answer text.
 <script type="application/ld+json">
 {{
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    {{ "@type": "Question", "name": "First real question in full?", "acceptedAnswer": {{ "@type": "Answer", "text": "Full answer in 2–4 sentences." }} }},
-    {{ "@type": "Question", "name": "Second real question?", "acceptedAnswer": {{ "@type": "Answer", "text": "Full answer." }} }},
-    {{ "@type": "Question", "name": "Third real question?", "acceptedAnswer": {{ "@type": "Answer", "text": "Full answer." }} }}
+    {{ "@type": "Question", "name": "What is [write actual question here]?", "acceptedAnswer": {{ "@type": "Answer", "text": "[Write 2–4 sentence answer here.]" }} }},
+    {{ "@type": "Question", "name": "How do I [write actual question]?", "acceptedAnswer": {{ "@type": "Answer", "text": "[Write answer.]" }} }},
+    {{ "@type": "Question", "name": "[Third actual question]?", "acceptedAnswer": {{ "@type": "Answer", "text": "[Write answer.]" }} }}
   ]
 }}
 </script>
