@@ -375,9 +375,12 @@ def generate_featured_image(article_title, save_dir=None, source_url=None):
         except Exception as e:
             logger.warning(f"    Imagen failed: {e}")
 
-    # 5. Placeholder (solid color + title text)
-    logger.info("    Using placeholder image (title text)")
-    return _generate_placeholder_image(article_title, output_path_webp, output_path_jpg)
+    # 5. Placeholder disabled by default (user prefers no image over plain green)
+    if getattr(config, "USE_PLACEHOLDER_IMAGE", False):
+        logger.info("    Using placeholder image (title text)")
+        return _generate_placeholder_image(article_title, output_path_webp, output_path_jpg)
+    logger.warning("    No image generated (all sources failed). Post will publish without featured image.")
+    return None, None
 
 
 def _generate_pollinations_image(article_title, output_path_webp, output_path_jpg):

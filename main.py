@@ -162,12 +162,38 @@ def run_scan():
     logger.info(f"\n🔬 Analyzing {len(all_stories)} total stories...")
     trending_topics = detect_spikes(all_stories, trends_data)
 
+    # Helpers for topic rotation (avoid suggesting same topic many cycles in a row)
+    RECENT_TOPICS_FILE = "recently_suggested_topics.json"
+    RECENT_TOPICS_MAX = 12
+
+    def _load_recent_suggested():
+        try:
+            if os.path.exists(RECENT_TOPICS_FILE):
+                with open(RECENT_TOPICS_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return []
+
+    def _save_recent_suggested(recent):
+        try:
+            with open(RECENT_TOPICS_FILE, "w", encoding="utf-8") as f:
+                json.dump(recent[-RECENT_TOPICS_MAX:], f)
+        except Exception as e:
+            logger.debug(f"Could not save recent topics: {e}")
+
     # When few or no spike topics, inject one priority content idea (scheme updates, installments, eKYC, guides)
     content_ideas = getattr(config, "CONTENT_IDEAS", [])
     if content_ideas and len(trending_topics) < 2:
         import hashlib
-        day_index = (datetime.utcnow().date() - datetime(2025, 1, 1).date()).days % max(len(content_ideas), 1)
-        idea = content_ideas[day_index] if content_ideas else None
+        recent = _load_recent_suggested()
+        # Prefer ideas not recently suggested
+        available = [i for i in content_ideas if (i.get("topic") or "").strip() not in recent]
+        if not available:
+            available = content_ideas
+            recent = []
+        day_index = (datetime.utcnow().date() - datetime(2025, 1, 1).date()).days % max(len(available), 1)
+        idea = available[day_index] if available else None
         if idea:
             idea_hash = hashlib.sha256(("content_idea_" + idea["topic"]).encode()).hexdigest()[:16]
             trending_topics.append({
@@ -181,6 +207,8 @@ def run_scan():
                 "story_count": 0,
                 "story_hash": idea_hash,
             })
+            recent.append(idea["topic"].strip())
+            _save_recent_suggested(recent)
             logger.info(f"   📌 Injected priority topic: {idea['topic'][:50]}...")
 
     if not trending_topics:
@@ -193,6 +221,16 @@ def run_scan():
             f"No alerts this cycle — all quiet."
         )
         return 0
+
+    # Put less-recently-suggested topics first so default "Write Article" choice is fresh
+    try:
+        recent_set = set(_load_recent_suggested())
+        trending_topics = sorted(
+            trending_topics,
+            key=lambda t: (1 if (t.get("topic") or "").strip() in recent_set else 0, -t.get("score", 0)),
+        )
+    except Exception:
+        pass
 
     logger.info(f"🔥 Found {len(trending_topics)} trending topics!")
 
@@ -228,6 +266,10 @@ def run_scan():
                 
                 save_topic_to_cache(conn, story_hash, topic)
                 record_notification(conn, story_hash, message_id)
+                # Track suggested topic so we rotate and don't repeat same topic for many cycles
+                rec = _load_recent_suggested()
+                rec.append((topic.get("topic") or "").strip())
+                _save_recent_suggested(rec)
                 logger.info(f"   ✅ Alert sent (Telegram ID: {message_id})")
             else:
                 logger.warning(f"   ⚠️ Failed to send alert")

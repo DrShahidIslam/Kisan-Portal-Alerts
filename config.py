@@ -208,6 +208,8 @@ IMAGEN_MODEL = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
 SKIP_AI_IMAGE = os.getenv("SKIP_AI_IMAGE", "false").lower() in ("true", "1", "yes")
 # Imagen is paid-only; set True only if you have a paid Gemini plan. Free tier uses Gemini Flash → source → Pollinations → placeholder.
 USE_GEMINI_IMAGEN = os.getenv("USE_GEMINI_IMAGEN", "false").lower() in ("true", "1", "yes")
+# When all image sources fail: if False (default), publish without featured image; if True, use green placeholder with title text.
+USE_PLACEHOLDER_IMAGE = os.getenv("USE_PLACEHOLDER_IMAGE", "false").lower() in ("true", "1", "yes")
 
 # ── Logging ───────────────────────────────────────────────────────────
 LOG_FILE = "agent.log"
