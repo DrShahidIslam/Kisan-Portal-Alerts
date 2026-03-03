@@ -164,7 +164,7 @@ def run_scan():
 
     # Helpers for topic rotation (avoid suggesting same topic many cycles in a row)
     RECENT_TOPICS_FILE = "recently_suggested_topics.json"
-    RECENT_TOPICS_MAX = 12
+    RECENT_TOPICS_MAX = 30  # Keep longer memory to avoid repeats across 100+ ideas
 
     def _load_recent_suggested():
         try:
@@ -182,23 +182,39 @@ def run_scan():
         except Exception as e:
             logger.debug(f"Could not save recent topics: {e}")
 
-    # When few or no spike topics, inject one priority content idea (scheme updates, installments, eKYC, guides)
+    # When few or no spike topics, inject 2-3 priority content ideas covering DIVERSE angles
+    # (eligibility, eKYC, status check, rule change, installment, guide, etc.)
     content_ideas = getattr(config, "CONTENT_IDEAS", [])
+    IDEAS_TO_INJECT = 3 if len(trending_topics) == 0 else 2  # More ideas when no real news
     if content_ideas and len(trending_topics) < 2:
         import hashlib
+        import random
         recent = _load_recent_suggested()
         # Prefer ideas not recently suggested
         available = [i for i in content_ideas if (i.get("topic") or "").strip() not in recent]
-        if not available:
+        if len(available) < IDEAS_TO_INJECT:
+            # Pool is nearly exhausted — reset rotation but keep last few to avoid immediate repeats
             available = content_ideas
-            recent = []
-        day_index = (datetime.utcnow().date() - datetime(2025, 1, 1).date()).days % max(len(available), 1)
-        idea = available[day_index] if available else None
-        if idea:
+            recent = recent[-5:] if len(recent) > 5 else []
+        # Shuffle using hour-based seed so each cycle within the same day picks different topics
+        now = datetime.utcnow()
+        seed = int(now.strftime("%Y%m%d%H")) + len(recent)
+        rng = random.Random(seed)
+        rng.shuffle(available)
+        # Try to pick ideas from DIFFERENT schemes (avoid 3 PM Kisan ideas in one cycle)
+        injected_keywords = set()
+        injected_count = 0
+        for idea in available:
+            if injected_count >= IDEAS_TO_INJECT:
+                break
+            kw = (idea.get("matched_keyword") or "").lower()
+            # Skip if same scheme already picked this cycle (allow after all schemes exhausted)
+            if kw in injected_keywords and injected_count < len(available):
+                continue
             idea_hash = hashlib.sha256(("content_idea_" + idea["topic"]).encode()).hexdigest()[:16]
             trending_topics.append({
                 "topic": idea["topic"],
-                "score": 50.0,
+                "score": 50.0 - injected_count,  # Slight score decrease for ordering
                 "factors": ["priority content idea (scheme/installment/guide)"],
                 "stories": [],
                 "sources": ["Kisan Portal editorial"],
@@ -208,8 +224,11 @@ def run_scan():
                 "story_hash": idea_hash,
             })
             recent.append(idea["topic"].strip())
-            _save_recent_suggested(recent)
-            logger.info(f"   📌 Injected priority topic: {idea['topic'][:50]}...")
+            injected_keywords.add(kw)
+            injected_count += 1
+            logger.info(f"   📌 Injected priority topic #{injected_count}: {idea['topic'][:60]}...")
+        _save_recent_suggested(recent)
+        logger.info(f"   📌 Total injected: {injected_count} content ideas this cycle")
 
     if not trending_topics:
         logger.info("✅ No new trending topics detected this cycle.")
@@ -238,7 +257,7 @@ def run_scan():
     conn = get_connection()
     alerts_sent = 0
 
-    for topic in trending_topics[:5]:  # Max 5 alerts per cycle to avoid spam
+    for topic in trending_topics[:8]:  # Max 8 alerts per cycle (increased for multi-idea injection)
         try:
             # Establish a single, consistent hash for the Telegram button AND the database cache
             story_hash = topic.get("story_hash")

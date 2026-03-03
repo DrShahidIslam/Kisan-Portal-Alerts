@@ -11,6 +11,13 @@ SCHEME_CATEGORY_SLUGS = [
     "enam-scheme", "kisan-karz-mochan-yojana", "rythu-bharosa", "soil-health-card",
     "pm-kisan-tractor-scheme", "e-crop", "pm-dhan-dhaanya-krishi-yojana",
     "dalhan-aatmanirbharta-mission-scheme", "e-panta", "pik-vima-scheme-maharashtra",
+    # New scheme categories
+    "pm-kusum-yojana", "rkvy-scheme", "pm-fme-scheme", "pm-matsya-sampada-yojana",
+    "national-livestock-mission", "midh-horticulture", "smam-mechanization",
+    "national-bamboo-mission", "pm-kisan-maandhan", "nfsm-food-security",
+    "ladli-behna-yojana", "kalia-yojana", "krishak-bandhu-scheme",
+    "paramparagat-krishi-organic", "rashtriya-gokul-mission",
+    "rajiv-gandhi-kisan-nyay", "meri-fasal-mera-byora",
 ]
 # For prompt: same list + "news" for unrelated topics
 CATEGORY_MAPPING = SCHEME_CATEGORY_SLUGS + ["news"]
@@ -20,19 +27,37 @@ CATEGORY_MAPPING = SCHEME_CATEGORY_SLUGS + ["news"]
 KEYWORDS_TO_CATEGORY = [
     # (list of phrases to match in topic title or matched_keyword, slug)
     (["pm kisan tractor", "tractor scheme", "tractor subsidy"], "pm-kisan-tractor-scheme"),
+    (["pm kisan maandhan", "farmer pension"], "pm-kisan-maandhan"),
     (["pm kisan", "pm-kisan", "samman nidhi", "kisan samman"], "pm-kisan-samman-nidhi"),
     (["pmfby", "fasal bima", "crop insurance", "pradhan mantri fasal bima"], "pmfby"),
     (["kisan credit card", "kcc"], "kisan-credit-card"),
     (["kisan vikas patra", "kvp"], "kisan-vikas-patra"),
     (["enam", "e-nam", "e nam", "national agricultural market"], "enam-scheme"),
-    (["kisan karz mochan", "karz mochan"], "kisan-karz-mochan-yojana"),
-    (["rythu bharosa", "rythu bandhu", "rythu bharosa scheme"], "rythu-bharosa"),
+    (["kisan karz mochan", "karz mochan", "farm loan waiver"], "kisan-karz-mochan-yojana"),
+    (["rythu bharosa", "rythu bandhu", "rythu bharosa scheme", "ysr rythu"], "rythu-bharosa"),
     (["soil health card", "soil health"], "soil-health-card"),
-    (["e-crop", "e crop", "ecrop"], "e-crop"),
-    (["pm dhan dhaanya", "dhaanya krishi", "pm dhan"], "pm-dhan-dhaanya-krishi-yojana"),
-    (["dalhan", "aatmanirbharta mission", "dalhan aatmanirbharta"], "dalhan-aatmanirbharta-mission-scheme"),
+    (["e-crop", "e crop", "ecrop", "crop survey"], "e-crop"),
+    (["pm dhan dhaanya", "dhaanya krishi", "pm dhan", "pmddky"], "pm-dhan-dhaanya-krishi-yojana"),
+    (["dalhan", "aatmanirbharta mission", "dalhan aatmanirbharta", "oilseeds mission"], "dalhan-aatmanirbharta-mission-scheme"),
     (["e-panta", "e panta", "e panta andhra", "panta andhra"], "e-panta"),
     (["pik vima", "pik vima maharashtra", "pik vima scheme"], "pik-vima-scheme-maharashtra"),
+    # New scheme category mappings
+    (["pm kusum", "kusum yojana", "solar pump"], "pm-kusum-yojana"),
+    (["rkvy", "rashtriya krishi vikas", "rkvy-raftaar"], "rkvy-scheme"),
+    (["pm fme", "micro food", "odop", "one district one product"], "pm-fme-scheme"),
+    (["pmmsy", "matsya sampada", "fisheries subsidy"], "pm-matsya-sampada-yojana"),
+    (["national livestock mission", "nlm", "goat farming", "poultry scheme"], "national-livestock-mission"),
+    (["midh", "horticulture mission", "horticulture subsidy"], "midh-horticulture"),
+    (["smam", "farm machinery subsidy", "custom hiring", "agricultural mechanization"], "smam-mechanization"),
+    (["national bamboo mission", "bamboo plantation", "nbm"], "national-bamboo-mission"),
+    (["nfsm", "national food security mission", "food security"], "nfsm-food-security"),
+    (["ladli behna", "ladli bahan"], "ladli-behna-yojana"),
+    (["kalia yojana", "kalia odisha"], "kalia-yojana"),
+    (["krishak bandhu", "krishak bandhu west bengal"], "krishak-bandhu-scheme"),
+    (["paramparagat krishi", "pkvy", "organic farming mission"], "paramparagat-krishi-organic"),
+    (["rashtriya gokul mission", "gokul mission", "cattle breeding"], "rashtriya-gokul-mission"),
+    (["rajiv gandhi kisan nyay", "kisan nyay chhattisgarh"], "rajiv-gandhi-kisan-nyay"),
+    (["meri fasal mera byora", "haryana farmer registration"], "meri-fasal-mera-byora"),
 ]
 
 
