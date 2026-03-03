@@ -223,41 +223,103 @@ def _try_source_image(source_url, output_path_webp, output_path_jpg):
     return None, None
 
 
+# Words to strip from titles when building Unsplash search queries
+_UNSPLASH_STOPWORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "to", "of", "in", "for",
+    "on", "with", "at", "by", "from", "up", "about", "into", "through",
+    "and", "but", "or", "nor", "not", "so", "yet", "both", "either",
+    "how", "what", "when", "where", "who", "which", "why", "all", "each",
+    "this", "that", "these", "those", "it", "its", "your", "our", "their",
+    "2024", "2025", "2026", "2027", "latest", "new", "update", "check",
+    "status", "date", "guide", "online", "step", "complete", "announced",
+    "released", "list", "scheme", "yojana",
+}
+
+# Broad fallback queries for agriculture content (rotated)
+_UNSPLASH_BROAD_QUERIES = [
+    "indian agriculture farm field",
+    "farmer India crops green",
+    "rice paddy field India",
+    "wheat harvest India rural",
+    "agriculture irrigation India",
+    "tractor farm field India",
+]
+
+
+def _build_unsplash_query(article_title):
+    """Extract 3-5 meaningful keywords from the title for Unsplash search."""
+    # Strip non-alpha chars and split
+    clean = re.sub(r"[^a-zA-Z\s]", "", article_title).lower()
+    words = [w for w in clean.split() if w and w not in _UNSPLASH_STOPWORDS and len(w) > 2]
+    # Take first 4 meaningful words + add 'India agriculture' for context
+    keywords = words[:4]
+    if keywords:
+        # Add agriculture context if not already present
+        agri_terms = {"agriculture", "farm", "farmer", "crop", "kisan", "field", "rural"}
+        if not any(k in agri_terms for k in keywords):
+            keywords.append("agriculture")
+        keywords.append("India")
+        return " ".join(keywords)
+    return None
+
+
 def _try_unsplash_image(article_title, output_path_webp, output_path_jpg):
-    """Try Unsplash API for a high-quality stock photo (optional; needs UNSPLASH_ACCESS_KEY). Returns (webp, jpg) or (None, None)."""
+    """Try Unsplash API for a high-quality stock photo (needs UNSPLASH_ACCESS_KEY).
+    Strategy: try a keyword-extracted query first, then a broad agriculture fallback.
+    Returns (webp, jpg) or (None, None)."""
     key = getattr(config, "UNSPLASH_ACCESS_KEY", None)
     if not key:
+        logger.info("    Unsplash: skipped (no API key)")
         return None, None
     try:
         import requests
-        # Build search query: prefer agriculture/farm terms; fallback to first few words of title
-        q = re.sub(r"[^a-zA-Z0-9\s]", "", article_title)[:40].strip()
-        if not q or len(q.split()) < 2:
-            q = "indian agriculture farm"
-        # Unsplash search
-        r = requests.get(
-            "https://api.unsplash.com/search/photos",
-            params={"query": q, "client_id": key, "per_page": 1, "orientation": "landscape"},
-            timeout=10,
-        )
-        r.raise_for_status()
-        data = r.json()
-        results = data.get("results") or []
-        if not results:
-            return None, None
-        url = results[0].get("urls", {}).get("regular") or results[0].get("urls", {}).get("small")
-        if not url:
-            return None, None
-        img_r = requests.get(url, timeout=15)
-        img_r.raise_for_status()
-        image_bytes = img_r.content
-        if len(image_bytes) < 5000:
-            return None, None
-        result_webp = _compress_to_webp(image_bytes, output_path_webp)
-        result_jpg = _compress_to_jpg(image_bytes, output_path_jpg)
-        if result_webp and result_jpg:
-            logger.info(f"    Image from Unsplash: {result_webp}, {result_jpg}")
-            return result_webp, result_jpg
+        import hashlib
+
+        # Build queries to try: specific first, then broad fallback
+        queries_to_try = []
+        specific_q = _build_unsplash_query(article_title)
+        if specific_q:
+            queries_to_try.append(specific_q)
+
+        # Pick a deterministic broad fallback based on title hash (so same title = same image)
+        title_hash = int(hashlib.md5(article_title.encode()).hexdigest(), 16)
+        broad_q = _UNSPLASH_BROAD_QUERIES[title_hash % len(_UNSPLASH_BROAD_QUERIES)]
+        queries_to_try.append(broad_q)
+
+        for q in queries_to_try:
+            logger.info(f"    Unsplash: searching '{q}'...")
+            r = requests.get(
+                "https://api.unsplash.com/search/photos",
+                params={"query": q, "client_id": key, "per_page": 3, "orientation": "landscape"},
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            results = data.get("results") or []
+            logger.info(f"    Unsplash: {len(results)} results for '{q}'")
+
+            if not results:
+                continue
+
+            # Pick the first result with a usable URL
+            for photo in results:
+                url = photo.get("urls", {}).get("regular") or photo.get("urls", {}).get("small")
+                if not url:
+                    continue
+                img_r = requests.get(url, timeout=15)
+                img_r.raise_for_status()
+                image_bytes = img_r.content
+                if len(image_bytes) < 5000:
+                    continue
+                result_webp = _compress_to_webp(image_bytes, output_path_webp)
+                result_jpg = _compress_to_jpg(image_bytes, output_path_jpg)
+                if result_webp and result_jpg:
+                    logger.info(f"    Unsplash: image saved ({result_webp})")
+                    return result_webp, result_jpg
+
+        logger.info("    Unsplash: no usable image found after all queries")
     except Exception as e:
         logger.warning(f"    Unsplash failed: {e}")
     return None, None
@@ -265,6 +327,7 @@ def _try_unsplash_image(article_title, output_path_webp, output_path_jpg):
 
 def _try_pollinations_image(article_title, output_path_webp, output_path_jpg):
     """Try Pollinations.ai (free). Returns (webp, jpg) or (None, None)."""
+    logger.info("    Pollinations: generating image...")
     return _generate_pollinations_image(article_title, output_path_webp, output_path_jpg)
 
 
@@ -310,12 +373,11 @@ def _generate_placeholder_image(article_title, output_path_webp, output_path_jpg
 
 def generate_featured_image(article_title, save_dir=None, source_url=None):
     """
-    Generate a featured image. Order (same as FIFA alerts app):
-    1. Gemini Flash Image (free)
-    2. Source article image (og:image or first img) — used when image generation fails; no quota cost
-    3. Pollinations (free)
-    4. Imagen (if USE_GEMINI_IMAGEN)
-    5. Placeholder (title text on solid color)
+    Generate a featured image. Fallback chain (in order):
+    1. Gemini 2.5 Flash Image (free, best quality AI, 500 req/day)
+    2. Unsplash (free, real stock photos, 50 req/hr)
+    3. Source article image (og:image or first img)
+    4. Pollinations (free AI, unreliable)
     Compresses to WebP and JPEG under 100KB.
     """
     if save_dir is None:
@@ -329,57 +391,42 @@ def generate_featured_image(article_title, save_dir=None, source_url=None):
 
     logger.info(f"  Generating featured image for: {article_title[:60]}")
 
-    # 0. Optional: Unsplash (high-quality real photos when key is set)
-    if getattr(config, "UNSPLASH_ACCESS_KEY", None):
-        webp, jpg = _try_unsplash_image(article_title, output_path_webp, output_path_jpg)
-        if webp and jpg:
-            return webp, jpg
-
-    # 1. Free tier: Gemini 2.5 Flash Image
+    # ── 1. Gemini 2.5 Flash Image (free tier, best quality) ──
+    logger.info("    [1/4] Trying Gemini Flash Image...")
     webp, jpg = _try_gemini_flash_image(article_title, output_path_webp, output_path_jpg)
     if webp and jpg:
         return webp, jpg
+    logger.info("    [1/4] Gemini Flash Image: no image produced")
 
-    # 2. When image generation fails: use image from source article (og:image or first img) — same as FIFA
+    # ── 2. Unsplash (real stock photos) ──
+    if getattr(config, "UNSPLASH_ACCESS_KEY", None):
+        logger.info("    [2/4] Trying Unsplash...")
+        webp, jpg = _try_unsplash_image(article_title, output_path_webp, output_path_jpg)
+        if webp and jpg:
+            return webp, jpg
+        logger.info("    [2/4] Unsplash: no image produced")
+    else:
+        logger.info("    [2/4] Unsplash: skipped (no API key)")
+
+    # ── 3. Source article og:image ──
     if source_url:
+        logger.info(f"    [3/4] Trying source article image from: {source_url[:60]}")
         webp, jpg = _try_source_image(source_url, output_path_webp, output_path_jpg)
         if webp and jpg:
             return webp, jpg
+        logger.info("    [3/4] Source image: no image produced")
+    else:
+        logger.info("    [3/4] Source image: skipped (no source URL)")
 
-    # 3. Free: Pollinations
+    # ── 4. Pollinations (free AI, unreliable) ──
+    logger.info("    [4/4] Trying Pollinations...")
     webp, jpg = _try_pollinations_image(article_title, output_path_webp, output_path_jpg)
     if webp and jpg:
         return webp, jpg
+    logger.info("    [4/4] Pollinations: no image produced")
 
-    # 4. Paid tier only: Imagen (skip on free tier to avoid 400 errors)
-    if getattr(config, "USE_GEMINI_IMAGEN", False):
-        try:
-            prompt = build_image_prompt(article_title)
-            generation_config = genai.types.GenerateImagesConfig(
-                number_of_images=1,
-                output_mime_type="image/jpeg",
-                aspect_ratio="16:9",
-            )
-            response = generate_image_with_fallback(
-                model=getattr(config, "IMAGEN_MODEL", "imagen-3.0-generate-002"),
-                prompt=prompt,
-                generation_config=generation_config,
-            )
-            if response.generated_images:
-                for generated_image in response.generated_images:
-                    result_webp = _compress_to_webp(generated_image.image.image_bytes, output_path_webp)
-                    result_jpg = _compress_to_jpg(generated_image.image.image_bytes, output_path_jpg)
-                    if result_webp and result_jpg:
-                        logger.info(f"    Images ready from Imagen: {result_webp}, {result_jpg}")
-                        return result_webp, result_jpg
-        except Exception as e:
-            logger.warning(f"    Imagen failed: {e}")
-
-    # 5. Placeholder disabled by default (user prefers no image over plain green)
-    if getattr(config, "USE_PLACEHOLDER_IMAGE", False):
-        logger.info("    Using placeholder image (title text)")
-        return _generate_placeholder_image(article_title, output_path_webp, output_path_jpg)
-    logger.warning("    No image generated (all sources failed). Post will publish without featured image.")
+    # ── All sources failed ──
+    logger.warning("    All 4 image sources failed. Post will publish without featured image.")
     return None, None
 
 
@@ -387,16 +434,13 @@ def _generate_pollinations_image(article_title, output_path_webp, output_path_jp
     """
     Create a beautiful AI image using pollinations.ai (Flux model).
     Outputs as compressed WebP and JPEG under 100KB.
+    Returns (webp, jpg) or (None, None) — does NOT fall back to gradient.
     """
     import urllib.request
     import urllib.parse
     import time
-    from PIL import Image, ImageDraw
-    import io
 
     try:
-        logger.info(f"    Fetching high-quality image from Pollinations (Flux)...")
-        
         # Build prompt: clear, editorial, no text (better AI image quality)
         prompt = f"Professional editorial photograph, Indian agriculture, farm or crop field, natural daylight, photorealistic, high quality, for article: {article_title}. No text, no logos, no watermark, landscape."
         safe_prompt = urllib.parse.quote(prompt)
@@ -407,24 +451,26 @@ def _generate_pollinations_image(article_title, output_path_webp, output_path_jp
         
         # Download with timeout and user-agent
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=45) as response:
+        with urllib.request.urlopen(req, timeout=30) as response:
             image_bytes = response.read()
             
         if not image_bytes or len(image_bytes) < 1000:
-            raise Exception("Received empty or invalid image from Pollinations")
+            logger.warning("    Pollinations: received empty or invalid image")
+            return None, None
 
         result_webp = _compress_to_webp(image_bytes, output_path_webp)
         result_jpg = _compress_to_jpg(image_bytes, output_path_jpg)
         
         if result_webp and result_jpg:
-             logger.info("    ✅ Image generated successfully via Pollinations (Flux)")
+             logger.info(f"    Pollinations: image saved ({result_webp})")
              return result_webp, result_jpg
         
-        raise Exception("Pollinations compression failed")
+        logger.warning("    Pollinations: compression failed")
+        return None, None
 
     except Exception as e:
-        logger.warning(f"    Pollinations error: {e}. Falling back to gradient.")
-        return _generate_gradient_fallback(output_path_webp, output_path_jpg)
+        logger.warning(f"    Pollinations error: {e}")
+        return None, None
 
 
 def _generate_gradient_fallback(output_path_webp, output_path_jpg):

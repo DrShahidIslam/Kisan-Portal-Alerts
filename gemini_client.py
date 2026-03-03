@@ -83,8 +83,9 @@ def generate_content_with_fallback(
 
 def generate_image_with_gemini_flash(prompt, max_retries_per_key=2, base_delay=10):
     """
-    Generate an image using Gemini 2.5 Flash Image (free tier). Uses generate_content with
-    response_modalities including IMAGE. Returns response or None; caller extracts image from
+    Generate an image using Gemini 2.5 Flash Image (free tier, 500 req/day).
+    Uses generate_content with response_modalities including IMAGE.
+    Returns response or None; caller extracts image from
     response.candidates[0].content.parts (part.inline_data.data).
     """
     try:
@@ -94,11 +95,12 @@ def generate_image_with_gemini_flash(prompt, max_retries_per_key=2, base_delay=1
         GenerateContentConfig = getattr(types, "GenerateContentConfig", None)
         Modality = getattr(types, "Modality", None)
         if GenerateContentConfig is None or Modality is None:
-            logger.warning("  Could not import GenerateContentConfig/Modality for Gemini Flash Image")
+            logger.warning("    Could not import GenerateContentConfig/Modality for Gemini Flash Image")
             return None
 
     keys = config.GEMINI_API_KEYS
     if not keys:
+        logger.warning("    No Gemini API keys configured for Flash Image")
         return None
 
     contents = f"Generate a single photorealistic editorial image for a news article. No text or captions in the image. Topic: {prompt}"
@@ -106,12 +108,16 @@ def generate_image_with_gemini_flash(prompt, max_retries_per_key=2, base_delay=1
         response_modalities=[Modality.TEXT, Modality.IMAGE],
     )
 
+    # Model name: gemini-2.5-flash-image (free tier, 500 RPD)
+    model_name = "gemini-2.5-flash-image"
+    logger.info(f"    Trying Gemini Flash Image (model={model_name})...")
+
     for key_idx, current_key in enumerate(keys):
         client = genai.Client(api_key=current_key)
         for attempt in range(max_retries_per_key + 1):
             try:
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash-preview-05-20",  # or "gemini-2.5-flash-image" when available
+                    model=model_name,
                     contents=contents,
                     config=config_obj,
                 )
@@ -119,16 +125,20 @@ def generate_image_with_gemini_flash(prompt, max_retries_per_key=2, base_delay=1
             except Exception as e:
                 error_str = str(e)
                 if "404" in error_str or "not found" in error_str.lower():
-                    logger.warning(f"  Gemini image model not available: {e}")
+                    logger.warning(f"    Gemini image model '{model_name}' not available: {e}")
                     return None
                 if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                     if attempt >= max_retries_per_key:
+                        logger.warning(f"    Gemini Flash Image rate limited on key {key_idx + 1}, exhausted retries")
+                        if key_idx < len(keys) - 1:
+                            break  # try next key
                         return None
                     time.sleep(base_delay * (2 ** attempt))
                     continue
                 if key_idx < len(keys) - 1:
+                    logger.warning(f"    Gemini Flash Image error on key {key_idx + 1}: {e}. Trying next key...")
                     break
-                logger.warning(f"  Gemini Flash Image failed: {e}")
+                logger.warning(f"    Gemini Flash Image failed: {e}")
                 return None
     return None
 
