@@ -277,36 +277,18 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             if not re.search(r'"name":\s*"[^"]*\?"', result["faq_html"]):
                 result["faq_html"] = ""
 
-        # ── Markdown to HTML — preserve Kadence accordion blocks ──
+        # ── Markdown to HTML ──
         import markdown
 
-        raw_content = result["content"]
-
-        # Extract Kadence accordion block(s) before markdown conversion (markdown strips HTML comments)
-        kadence_accordion_pattern = re.compile(
-            r'(<!-- wp:kadence/accordion.*?<!-- /wp:kadence/accordion -->)',
-            re.DOTALL | re.IGNORECASE
-        )
-        kadence_blocks = kadence_accordion_pattern.findall(raw_content)
-        # Remove Kadence blocks from content so markdown doesn't mangle them
-        content_without_kadence = kadence_accordion_pattern.sub('%%KADENCE_ACCORDION%%', raw_content)
-
         result["content_html"] = markdown.markdown(
-            content_without_kadence,
+            result["content"],
             extensions=['nl2br', 'sane_lists']
         )
 
-        # Re-inject preserved Kadence accordion blocks
-        for kb in kadence_blocks:
-            result["content_html"] = result["content_html"].replace('%%KADENCE_ACCORDION%%', kb, 1)
-        # Clean up any leftover placeholders
-        result["content_html"] = result["content_html"].replace('%%KADENCE_ACCORDION%%', '')
-        result["content_html"] = result["content_html"].replace('<p>%%KADENCE_ACCORDION%%</p>', '')
-
-        # ── Build accordion from FAQ schema (ALWAYS, as a guarantee) ──
+        # ── Build FAQ from schema (ALWAYS, as a guarantee) ──
         # This ensures visible questions even when the AI outputs only plain paragraphs.
-        def _build_accordion_from_schema(faq_html_str):
-            """Parse FAQ JSON-LD schema and return Kadence accordion HTML with visible questions."""
+        def _build_faq_from_schema(faq_html_str):
+            """Parse FAQ JSON-LD schema and return standard HTML with visible questions."""
             import json as _json
             script_body = re.search(r'<script[^>]*>([\s\S]*?)</script>', faq_html_str, re.IGNORECASE)
             if not script_body:
@@ -324,34 +306,25 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
                     qa_list.append((name, text))
             if not qa_list:
                 return None
-            pane_ids = ["3a", "3b", "3c", "3d", "3e"][:len(qa_list)]
-            parts = [
-                '<!-- wp:kadence/accordion {"id":"3"} -->',
-                '<div class="wp-block-kadence-accordion kt-accordion-id_3">',
-            ]
-            for pid, (q, a) in zip(pane_ids, qa_list):
-                q_esc = (q or "").replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ").replace("\r", " ").strip()
-                a_esc = (a or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-                parts.append(f'<!-- wp:kadence/pane {{"id":"{pid}","title":"{q_esc}"}} -->')
-                parts.append(f'<div class="wp-block-kadence-pane kt-accordion-pane-{pid}"><div class="kt-accordion-panel"><div class="kt-accordion-panel-inner">')
-                parts.append(f'<!-- wp:paragraph --><p>{a_esc}</p><!-- /wp:paragraph -->')
-                parts.append("</div></div></div>")
-                parts.append(f"<!-- /wp:kadence/pane -->")
-            parts.append("</div>")
-            parts.append("<!-- /wp:kadence/accordion -->")
+            parts = []
+            for q, a in qa_list:
+                q_esc = (q or "").replace("<", "&lt;").replace(">", "&gt;").strip()
+                a_esc = (a or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                parts.append(f'<!-- wp:heading {{"level":3}} -->\n<h3>{q_esc}</h3>\n<!-- /wp:heading -->')
+                parts.append(f'<!-- wp:paragraph -->\n<p>{a_esc}</p>\n<!-- /wp:paragraph -->')
             return "\n".join(parts)
 
-        # Check if content already has properly formed Kadence panes with title attributes containing questions
-        has_valid_accordion = bool(re.search(
-            r'wp:kadence/pane\s+\{[^}]*"title"\s*:\s*"[^"]*\?"',
+        # Check if content already has properly formed FAQ headings
+        has_visible_faq = bool(re.search(
+            r'<h[234][^>]*>[^<]*\?[^<]*</h[234]>',
             result["content_html"]
         ))
 
-        if not has_valid_accordion and result.get("faq_html") and "FAQPage" in result["faq_html"]:
+        if not has_visible_faq and result.get("faq_html") and "FAQPage" in result["faq_html"]:
             try:
-                accordion_html = _build_accordion_from_schema(result["faq_html"])
-                if accordion_html:
-                    # Find FAQ heading and replace everything after it with the accordion
+                faq_list_html = _build_faq_from_schema(result["faq_html"])
+                if faq_list_html:
+                    # Find FAQ heading and replace everything after it with the proper list
                     faq_heading_match = re.search(
                         r'(<h2[^>]*>.*?Frequently Asked Questions.*?</h2>)',
                         result["content_html"],
@@ -359,15 +332,13 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
                     )
                     if faq_heading_match:
                         start = result["content_html"].find(faq_heading_match.group(0))
-                        # Replace from heading to end: strip orphaned answer-only paragraphs
-                        new_section = faq_heading_match.group(0) + "\n\n" + accordion_html
+                        new_section = faq_heading_match.group(0) + "\n\n" + faq_list_html
                         result["content_html"] = result["content_html"][:start] + new_section
                     else:
-                        # No FAQ heading found, append one
-                        result["content_html"] += "\n\n<!-- wp:heading {\"level\":2} -->\n<h2>Frequently Asked Questions</h2>\n<!-- /wp:heading -->\n\n" + accordion_html
-                    logger.info("  ✅ FAQ accordion rebuilt from schema (questions now visible)")
+                        result["content_html"] += "\n\n<!-- wp:heading {\"level\":2} -->\n<h2>Frequently Asked Questions</h2>\n<!-- /wp:heading -->\n\n" + faq_list_html
+                    logger.info("  ✅ FAQ list rebuilt from schema (questions now visible)")
             except Exception as faq_e:
-                logger.debug(f"FAQ accordion build failed: {faq_e}")
+                logger.debug(f"FAQ list build failed: {faq_e}")
 
         # Assembly: wrap body in padded container (medium padding on all sides, below featured image)
         PADDING_STYLE = "padding: 1.5rem;"
