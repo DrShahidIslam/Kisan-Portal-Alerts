@@ -227,19 +227,23 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         final_kw = matched_keyword if matched_keyword else clean_meta(topic_title)
         result["matched_keyword"] = final_kw
 
-        # ── 6. CONTENT ──
+        # ── 6. LANG ──
+        lang_match = re.search(r'(?:6\.|LANG:)\s*([a-z]{2})', raw_text, re.IGNORECASE)
+        result["lang"] = clean_meta(lang_match.group(1).lower()) if lang_match else "en"
+
+        # ── 7. CONTENT ──
         content_block_match = re.search(r'---CONTENT_START---(.*?)---CONTENT_END---', raw_text, re.DOTALL)
         if content_block_match:
             result["content"] = content_block_match.group(1).strip()
         else:
-            # Fuzzy: look for anything after the Category/5 line or marked 6.
-            fuzzy_parts = re.split(r'(?:6\.|---CONTENT_START---).*?\n', raw_text, maxsplit=1, flags=re.IGNORECASE | re.DOTALL)
+            # Fuzzy: look for anything after the LANG/6 line or marked 7.
+            fuzzy_parts = re.split(r'(?:7\.|---CONTENT_START---).*?\n', raw_text, maxsplit=1, flags=re.IGNORECASE | re.DOTALL)
             if len(fuzzy_parts) > 1:
                 result["content"] = fuzzy_parts[1].split("---CONTENT_END---")[0].strip()
             else:
-                # Absolute fallback: Everything after the first 5 lines (skip TITLE/META/SLUG/TAGS/CATEGORY)
+                # Absolute fallback: Everything after the first 6 lines (skip TITLE/META/SLUG/TAGS/CATEGORY/LANG)
                 lines = raw_text.split("\n")
-                result["content"] = "\n".join(lines[5:]).strip() if len(lines) > 5 else raw_text
+                result["content"] = "\n".join(lines[6:]).strip() if len(lines) > 6 else raw_text
         if not result["content"]:
             result["content"] = raw_text
 

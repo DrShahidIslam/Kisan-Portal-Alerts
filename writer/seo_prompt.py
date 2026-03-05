@@ -245,7 +245,8 @@ CRITICAL: TITLE is your article H1. It must exactly match the main topic and app
 3. SLUG: 3–6 words, lowercase, hyphens only, max 50 chars. Example: pm-kisan-15th-installment-2025
 4. TAGS: Exactly 5 tags, comma-separated.
 5. CATEGORY: ONE slug from: {cat_mapping_str}. Use "news" only if topic does not match a scheme.
-6. ---CONTENT_START---
+6. LANG: The 2-letter ISO language code of this article's text ('en' for English, 'hi' for Hindi, 'te' for Telugu). Default is 'en'.
+7. ---CONTENT_START---
    [Intro: 2–4 sentences]
    
    ## [H2 – must align with TITLE topic]
@@ -268,9 +269,9 @@ CRITICAL: TITLE is your article H1. It must exactly match the main topic and app
    
    ### What documents are required?
    [2–4 sentence answer.]
-7. ---CONTENT_END---
-8. ---FAQ_START---
-REQUIRED: Output the FAQPage JSON-LD schema. Use 3–4 REAL questions (each must end with ?). The "name" field = exact question text (same as the accordion pane "title" in step 6). The "text" field = full 2–4 sentence answer. Do NOT output placeholder text like "First real question" or "Full answer" — write the actual question and answer text.
+8. ---CONTENT_END---
+9. ---FAQ_START---
+REQUIRED: Output the FAQPage JSON-LD schema. Use 3–4 REAL questions (each must end with ?). The "name" field = exact question text (same as the accordion pane "title" in step 7). The "text" field = full 2–4 sentence answer. Do NOT output placeholder text like "First real question" or "Full answer" — write the actual question and answer text.
 <script type="application/ld+json">
 {{
   "@context": "https://schema.org",
@@ -282,7 +283,7 @@ REQUIRED: Output the FAQPage JSON-LD schema. Use 3–4 REAL questions (each must
   ]
 }}
 </script>
-9. ---FAQ_END---
+10. ---FAQ_END---
 """
     return prompt
 

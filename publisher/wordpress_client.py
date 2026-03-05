@@ -76,6 +76,17 @@ def create_post(article, featured_image_path=None, status=None):
     if media_id:
         post_data["featured_media"] = media_id
 
+    # ── Handle Polylang language tag ──────────────────────────────
+    # Free Polylang does NOT support ?lang= in REST (requires Pro).
+    # We use a custom meta field (_kisan_lang) that our PHP snippet
+    # (deploy/polylang-rest-language.php) picks up to call pll_set_post_language().
+    article_lang = article.get("lang", "")
+    if article_lang:
+        if "meta" not in post_data:
+            post_data["meta"] = {}
+        post_data["meta"]["_kisan_lang"] = article_lang
+        logger.info(f"  🌐 Language tag: {article_lang}")
+
     try:
         for attempt in range(2):
             response = requests.post(
