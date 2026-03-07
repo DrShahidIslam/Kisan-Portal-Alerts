@@ -198,8 +198,31 @@ def _escape_md(text):
 
 def send_generating_status(topic_title):
     """Send a status message that an article is being generated."""
-    message = f"⏳ Generating article for:\n{topic_title}\n\nThis may take 30-60 seconds..."
+    message = f"📝 Generating article for:\n{topic_title}\n\nThis may take 1-2 minutes..."
     return _send_message(message)
+
+
+def send_generation_confirmation(topic):
+    """Send an 'Are you sure?' confirmation before starting article generation."""
+    title = topic.get("topic", "Unknown Topic")
+    story_hash = topic.get("story_hash", "none")
+
+    text = (
+        f"❓ *Confirm Article Generation*\n\n"
+        f"Do you want to generate a full article for:\n"
+        f"👉 *{title}*?\n\n"
+        f"This will use Gemini API and may take a moment."
+    )
+
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Yes, Generate", "callback_data": f"confirm_write_{story_hash}"},
+                {"text": "❌ Cancel", "callback_data": "cancel_write"},
+            ]
+        ]
+    }
+    return _send_message(text, parse_mode="Markdown", reply_markup=keyboard)
 
 
 def send_image_preview(image_path, article_title):

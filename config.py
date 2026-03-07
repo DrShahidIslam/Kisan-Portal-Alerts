@@ -397,6 +397,7 @@ BREAKING_SPIKE_SCORE = 95       # Auto-break mode trigger when topic score is ve
 MIN_COVERAGE_TOPICS_PER_CYCLE = 4 # Ensure minimum scheme-angle coverage ideas per scan
 MAX_REFRESH_TOPICS_PER_CYCLE = 2  # Refresh older published scheme pages automatically
 AUTO_GENERATE_BREAKING = True     # Auto-generate draft for breaking scheme updates
+REQUIRE_ARTICLE_CONFIRMATION = True # Ask for confirmation before starting article generation
 
 # â”€â”€ Google Trends Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 TRENDS_GEO = "IN"               # India (Crucial to avoid US trends)
