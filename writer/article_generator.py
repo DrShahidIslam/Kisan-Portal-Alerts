@@ -274,6 +274,15 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             )
             if schema_match:
                 result["faq_html"] = schema_match.group(0).strip()
+        if result["faq_html"]:
+            stripped_faq = result["faq_html"].strip()
+            if not re.search(r'<script\b', stripped_faq, re.IGNORECASE):
+                stripped_faq = (
+                    '<script type="application/ld+json">\n'
+                    + stripped_faq
+                    + '\n</script>'
+                )
+            result["faq_html"] = stripped_faq
         # Reject placeholder-only schema (so we don't publish fake FAQ)
         placeholder_phrases = (
             "Insert Question", "Insert detailed answer", "First real question in full",
@@ -361,7 +370,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         faq_block_output = ""
         if result["faq_html"]:
             hidden_schema = (
-                '<div class="kisan-faq-schema" style="display:none;position:absolute;left:-9999px;" aria-hidden="true">'
+                '<div class="kisan-faq-schema" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap;" aria-hidden="true">'
                 + result["faq_html"]
                 + "</div>"
             )
@@ -387,6 +396,5 @@ if __name__ == "__main__":
     if article:
         print(f"TITLE: {article['title']}")
         print(f"CONTENT PREVIEW: {article['full_content'][:500]}...")
-
 
 
