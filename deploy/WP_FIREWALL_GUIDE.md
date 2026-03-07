@@ -1,44 +1,64 @@
-# Troubleshooting WordPress API 403 Forbidden Errors (Wordfence & Cloudflare)
+# Troubleshooting WordPress API 403 and HTML Block Pages
 
-The agent runs an automated Python script, which lacks typical browser headers. Security plugins aggressively block these specific requests to protect against brute-force attacks and scraping. Here's how to allow the agent through.
+If the agent sometimes publishes and sometimes fails with `Non-JSON response type: text/html`, the problem is not your article payload. A firewall or bot-protection layer is intermittently challenging requests to `/wp-json/`.
 
-## Step 1: Whitelist the Agent in Wordfence
-Wordfence sees the Python `requests` module and assumes it's a malicious bot. You need to whitelist the REST API route or the IP address.
+## Option A: Publish via webhook (recommended)
 
-1. **Log in** to your WordPress Dashboard.
-2. Go to **Wordfence > Firewall**.
-3. Under the **Firewall Options**, find the section **Allowlisted URLs**.
-4. Add the following rule to allow list the REST API endpoints:
-   - **URL:** `/wp-json/wp/v2/`
-   - **Param Type:** `Path`
-   - **Match Type:** `Starts with`
-5. Click **Add**, then click **Save Changes** in the top right corner.
+This is the reliable fix. The agent sends the article to a private PHP file in your WordPress root, and that file creates the post locally inside WordPress. That bypasses Cloudflare and Wordfence blocks on the REST API.
 
-*Alternative: If you have a static IP address for the server where your script runs (e.g., your Oracle VM or the GitHub Actions runner IP ranges), you can add those under **Advanced Firewall Options > Allowlisted IP addresses**.*
+1. Copy [kisan-agent-webhook.php](/G:/Kisan%20Portal%20Alerts%20App/deploy/kisan-agent-webhook.php) to your WordPress site root.
+2. Rename it to something unguessable, for example `kisan-publish-a1b2c3.php`.
+3. In `wp-config.php` add:
 
-## Step 2: Ensure Application Passwords are appropriately granted
-1. Go to **Users > Profile**.
-2. Scroll down to **Application Passwords**.
-3. Ensure the password `Simon` generated here is the exact one you pasted into `.env`. Ensure that user has Author/Editor rights.
+```php
+define('KISAN_AGENT_WEBHOOK_SECRET', 'your-long-random-secret');
+```
 
-## Step 3: Cloudflare Settings (If Applicable)
-If you are using Cloudflare, it aggressively blocks automated scripts like Python `requests` with a `403 Forbidden` response. 
+4. Optional: choose which WordPress user owns posts published by the webhook:
 
-**IMPORTANT: If you are on the Cloudflare Free Plan:**
-Custom WAF rules **cannot** bypass the "Bot Fight Mode" challenge. If Bot Fight Mode is on, your script will always be blocked, regardless of the rules you set below.
-1. Go to **Security > Bots**.
-2. Toggle **Bot Fight Mode** to **Off**.
+```php
+define('KISAN_AGENT_WEBHOOK_AUTHOR', 'your-login-name');
+// or
+define('KISAN_AGENT_WEBHOOK_USER_ID', 2);
+```
 
-**If you are on a Paid Plan (Pro/Business):**
-You can keep Bot Fight Mode on and bypass it with a Custom Rule:
-1. Navigate to **Security > WAF** (Web Application Firewall) -> **Custom Rules**.
-2. Create a rule to bypass security for the REST API:
-   - **Field:** `URI Path`
-   - **Operator:** `starts with`
-   - **Value:** `/wp-json/`
-   - **Choose action:** `Skip` 
-   - Check **All remaining custom rules**
-   - Check **Rate limiting rules**
-   - Check **Browser Integrity Check**
-   - Check **Bot Fight Mode** and **Super Bot Fight Mode**
-3. Save and deploy the rule.
+5. In the agent `.env` add:
+
+```env
+WP_PUBLISH_WEBHOOK_URL=https://kisanportal.org/kisan-publish-a1b2c3.php
+WP_PUBLISH_SECRET=your-long-random-secret
+```
+
+6. Test the endpoint in a browser:
+   `https://kisanportal.org/kisan-publish-a1b2c3.php`
+   It should return a small JSON ping response.
+
+After this, the agent will use the webhook automatically for both draft creation and draft publishing.
+
+## Option B: Keep REST API and relax the firewall
+
+If you prefer not to use the webhook, you still need to allow `/wp-json/` through Wordfence or Cloudflare.
+
+### Wordfence
+
+1. Log in to WordPress.
+2. Go to `Wordfence > Firewall`.
+3. Add an allowlist rule for `/wp-json/wp/v2/`.
+4. If your runner IP is fixed, allowlist that IP too.
+
+### Cloudflare
+
+If you are on the free plan and `Bot Fight Mode` is on, REST requests may be challenged unpredictably. Turn it off for this path, or use the webhook instead.
+
+If you are on a paid plan, add a WAF rule to skip checks when `URI Path` starts with `/wp-json/`.
+
+## Why this started suddenly
+
+This kind of failure often appears without any code change in the agent because the block is upstream:
+
+- Cloudflare bot heuristics changed
+- Wordfence started challenging the request pattern
+- hosting or CDN security rules changed
+- the request hit a challenge page instead of JSON
+
+That is why it can work one run and fail on the next.

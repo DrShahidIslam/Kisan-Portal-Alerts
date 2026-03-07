@@ -713,7 +713,18 @@ def _handle_approve(status="draft", bypass_quality_gate=False):
             _pending_image_path = None
             save_pending_state()
         else:
-            send_simple_message("❌ WordPress publishing failed. Check your WP credentials.")
+            from publisher import wordpress_client
+            err = getattr(wordpress_client, "LAST_PUBLISH_ERROR", None)
+            msg = "WordPress publishing failed."
+            if err:
+                msg += f" Reason: {err[:180]}"
+            else:
+                msg += " Check logs."
+            if getattr(config, "WP_PUBLISH_WEBHOOK_URL", ""):
+                msg += " Check webhook file and secret if configured."
+            else:
+                msg += " REST API may be blocked by firewall or bot protection."
+            send_simple_message(f"❌ {msg}")
     except Exception as e:
         logger.error(f"WordPress publish error: {e}")
         send_simple_message(f"❌ Publishing error: {str(e)[:200]}")
@@ -948,3 +959,4 @@ if __name__ == "__main__":
         logger.info("Done.")
     else:
         run_agent_loop()
+

@@ -1,12 +1,14 @@
-﻿"""
-WordPress Client â€” Handles all WordPress REST API interactions:
+"""
+WordPress Client - Handles all WordPress REST API interactions:
 creating posts, uploading media, setting categories/tags,
 and injecting RankMath SEO fields.
 """
+import base64
 import logging
 import os
 import re
-import json
+import time
+
 import requests
 from requests.auth import HTTPBasicAuth
 
@@ -16,15 +18,22 @@ import config
 
 logger = logging.getLogger(__name__)
 
+LAST_PUBLISH_ERROR = None
+
 API_BASE = f"{config.WP_URL}/wp-json/wp/v2"
 AUTH = HTTPBasicAuth(config.WP_USERNAME, config.WP_APP_PASSWORD)
 TIMEOUT = 30
-RETRY_DELAY = 5  # seconds between retries on 502/503
-# User-Agent and Referer avoid Wordfence blocking (blank User-Agent/Referer)
+RETRY_DELAY = 5
+RETRY_403_DELAY = 4
 HEADERS = {
-    "User-Agent": "KisanPortalAgent/1.0 (WordPress REST)",
+    "User-Agent": "Mozilla/5.0 (compatible; KisanPortalAgent/1.0; +https://kisanportal.org)",
     "Referer": f"{config.WP_URL}/",
+    "Accept": "application/json, */*; q=0.1",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Origin": config.WP_URL.rstrip("/"),
 }
+
 
 def _safe_json(response):
     try:
@@ -32,69 +41,39 @@ def _safe_json(response):
     except Exception:
         return None
 
-def _rest_preflight():
-    """Quick REST check to fail fast on Cloudflare/WAF HTML blocks."""
-    try:
-        response = requests.get(
-            f"{API_BASE}/categories",
-            params={"per_page": 1},
-            auth=AUTH,
-            headers=HEADERS,
-            timeout=TIMEOUT,
-        )
-        ctype = (response.headers.get("content-type") or "").lower()
-        if response.status_code == 403:
-            return False, "HTTP 403 from WordPress/Firewall"
-        if response.status_code >= 500:
-            return False, f"HTTP {response.status_code} from WordPress"
-        if "json" not in ctype:
-            return False, f"Non-JSON response type: {ctype or 'unknown'}"
-        return True, "ok"
-    except Exception as e:
-        return False, str(e)
-
 
 def create_post(article, featured_image_path=None, status=None):
     """
     Create a WordPress post from an article dict.
-
-    Args:
-        article: dict with keys: title, full_content, slug, tags, category,
-                 meta_description, faq_html
-        featured_image_path: local path to featured image file
-        status: 'draft', 'pending', or 'publish' (overrides config default)
-
-    Returns:
-        dict with keys: post_id, post_url, status
-        or None if failed
+    If WP_PUBLISH_WEBHOOK_URL and WP_PUBLISH_SECRET are set, publishes via webhook.
+    Otherwise uses the REST API with retries for transient firewall or upstream failures.
     """
     if status is None:
         status = config.WP_DEFAULT_STATUS
 
-    logger.info(f"ðŸ“¤ Publishing to WordPress: '{article.get('title', 'Untitled')}'")
+    global LAST_PUBLISH_ERROR
+    LAST_PUBLISH_ERROR = None
 
-    ok, reason = _rest_preflight()
-    if not ok:
-        logger.error(f"  ❌ WordPress REST preflight failed: {reason}")
-        logger.error("     Tip: allow /wp-json/* in firewall, and whitelist GitHub Actions runner IPs.")
-        return None
+    if getattr(config, "WP_PUBLISH_WEBHOOK_URL", None) and getattr(config, "WP_PUBLISH_SECRET", None):
+        out = _publish_via_webhook(article, featured_image_path, status)
+        if out is None and LAST_PUBLISH_ERROR:
+            logger.error(f"  Webhook: {LAST_PUBLISH_ERROR}")
+        return out
 
-    # â”€â”€ Step 1: Upload featured image (if provided) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    logger.info(f"Publishing to WordPress: '{article.get('title', 'Untitled')}'")
+
     media_id = None
     if featured_image_path and os.path.exists(featured_image_path):
         media_id = upload_media(featured_image_path, article.get("title", ""))
 
-    # â”€â”€ Step 2: Get or create category â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     category_id = get_or_create_category(article.get("category", config.WP_DEFAULT_CATEGORY))
 
-    # â”€â”€ Step 3: Get or create tags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     tag_ids = []
     for tag_name in article.get("tags", []):
         tag_id = get_or_create_tag(tag_name)
         if tag_id:
             tag_ids.append(tag_id)
 
-    # â”€â”€ Step 4: Create the post â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     post_data = {
         "title": article.get("title", "Untitled"),
         "content": article.get("full_content", article.get("content", "")),
@@ -109,19 +88,16 @@ def create_post(article, featured_image_path=None, status=None):
     if media_id:
         post_data["featured_media"] = media_id
 
-    # â”€â”€ Handle Polylang language tag â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Free Polylang does NOT support ?lang= in REST (requires Pro).
-    # We use a custom meta field (_kisan_lang) that our PHP snippet
-    # (deploy/polylang-rest-language.php) picks up to call pll_set_post_language().
     article_lang = article.get("lang", "")
     if article_lang:
         if "meta" not in post_data:
             post_data["meta"] = {}
         post_data["meta"]["_kisan_lang"] = article_lang
-        logger.info(f"  ðŸŒ Language tag: {article_lang}")
+        logger.info(f"  Language tag: {article_lang}")
 
     try:
-        for attempt in range(2):
+        response = None
+        for attempt in range(3):
             response = requests.post(
                 f"{API_BASE}/posts",
                 json=post_data,
@@ -134,10 +110,9 @@ def create_post(article, featured_image_path=None, status=None):
                 post_id = result.get("id")
                 post_url = result.get("link", "")
 
-                logger.info(f"  âœ… Post created (ID: {post_id}, Status: {status})")
-                logger.info(f"  ðŸ”— URL: {post_url}")
+                logger.info(f"  Post created (ID: {post_id}, Status: {status})")
+                logger.info(f"  URL: {post_url}")
 
-                # â”€â”€ Step 5: Set RankMath SEO fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 _set_rankmath_meta(post_id, article)
 
                 if status in ["publish", "publish_live", "future"]:
@@ -148,32 +123,122 @@ def create_post(article, featured_image_path=None, status=None):
                             post_url,
                             article.get("title", ""),
                             article.get("slug", ""),
-                            published_at=datetime.utcnow().isoformat()
+                            published_at=datetime.utcnow().isoformat(),
                         )
                     except Exception as e:
-                        logger.warning(f"  âš ï¸ Could not add published post for internal links: {e}")
+                        logger.warning(f"  Could not add published post for internal links: {e}")
 
                 return {
                     "post_id": post_id,
                     "post_url": post_url,
                     "status": status,
                 }
-            if response.status_code in (502, 503) and attempt == 0:
-                logger.warning(f"  âš ï¸ WordPress returned {response.status_code}, retrying in {RETRY_DELAY}s...")
-                import time
+            if response.status_code in (502, 503) and attempt < 2:
+                logger.warning(f"  WordPress returned {response.status_code}, retrying in {RETRY_DELAY}s...")
+                time.sleep(RETRY_DELAY)
+                continue
+            if response.status_code == 403 and attempt < 2:
+                logger.warning(f"  WordPress returned 403, retrying in {RETRY_403_DELAY}s (attempt {attempt + 1}/3)...")
+                time.sleep(RETRY_403_DELAY)
+                continue
+            if "json" not in (response.headers.get("content-type") or "").lower() and attempt < 2:
+                logger.warning(f"  WordPress returned non-JSON content, retrying in {RETRY_DELAY}s...")
                 time.sleep(RETRY_DELAY)
                 continue
             break
 
-        logger.error(f"  âŒ Post creation failed: HTTP {response.status_code}")
-        logger.error(f"     Response: {response.text[:500]}")
-        if response.status_code == 403:
-            logger.error("     Tip: 403 often means firewall/plugin blocking. Whitelist GitHub Actions IPs or allow REST API.")
+        status_code = response.status_code if response is not None else "unknown"
+        body_preview = response.text[:500] if response is not None else "no response body"
+        logger.error(f"  Post creation failed: HTTP {status_code}")
+        logger.error(f"     Response: {body_preview}")
+        LAST_PUBLISH_ERROR = f"REST HTTP {status_code}"
+        if response is not None and "json" not in (response.headers.get("content-type") or "").lower():
+            LAST_PUBLISH_ERROR += " (non-JSON/WAF block)"
+        if response is not None and response.status_code == 403:
+            logger.error("     Tip: 403 often means firewall or bot protection blocking the REST API.")
         return None
 
     except Exception as e:
-        logger.error(f"  âŒ Post creation error: {e}")
+        logger.error(f"  Post creation error: {e}")
+        LAST_PUBLISH_ERROR = str(e)[:150]
         return None
+
+
+def _publish_via_webhook(article, featured_image_path=None, status=None):
+    """
+    Publish via webhook on the user's server. No REST API from the agent means no firewall block.
+    Requires deploy/kisan-agent-webhook.php on the server and WP_PUBLISH_WEBHOOK_URL +
+    WP_PUBLISH_SECRET in env.
+    """
+    global LAST_PUBLISH_ERROR
+    url = config.WP_PUBLISH_WEBHOOK_URL
+    secret = config.WP_PUBLISH_SECRET
+    if not url or not secret:
+        return None
+
+    payload = {
+        "title": article.get("title", "Untitled"),
+        "content": article.get("full_content", article.get("content", "")),
+        "excerpt": article.get("meta_description", ""),
+        "slug": article.get("slug", ""),
+        "status": status or config.WP_DEFAULT_STATUS,
+        "tags": article.get("tags", []),
+        "category": article.get("category", config.WP_DEFAULT_CATEGORY),
+        "rank_math_title": article.get("seo_title", article.get("title", "")),
+        "rank_math_description": article.get("meta_description", ""),
+        "rank_math_focus_keyword": article.get("matched_keyword", "") or article.get("focus_keyword", "") or (article.get("tags") or [""])[0] or article.get("title", ""),
+        "faq_schema": article.get("faq_schema", ""),
+        "lang": article.get("lang", ""),
+    }
+    if featured_image_path and os.path.exists(featured_image_path):
+        with open(featured_image_path, "rb") as f:
+            payload["featured_image_base64"] = base64.b64encode(f.read()).decode("ascii")
+        payload["featured_image_filename"] = os.path.basename(featured_image_path)
+        payload["featured_image_alt"] = article.get("title", "")
+
+    for attempt in range(3):
+        headers = HEADERS.copy()
+        headers.update({
+            "Content-Type": "application/json",
+            "X-Kisan-Agent-Token": secret,
+        })
+        headers.pop("Accept-Encoding", None)
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            if response.status_code == 200:
+                data = _safe_json(response)
+                if data and data.get("success"):
+                    logger.info(f"  Post created via webhook (ID: {data.get('post_id')}, URL: {data.get('post_url', '')})")
+                    return {
+                        "post_id": data.get("post_id"),
+                        "post_url": data.get("post_url", ""),
+                        "status": data.get("status", status),
+                    }
+                if data:
+                    logger.error(f"  Webhook returned success=false: {data.get('message', '')}")
+                    LAST_PUBLISH_ERROR = data.get("message", "success=false")
+                else:
+                    logger.error(f"  Webhook returned non-JSON success response: {response.text[:200]}")
+                    LAST_PUBLISH_ERROR = "Webhook returned non-JSON response"
+                return None
+            if response.status_code in (502, 503, 403) and attempt < 2:
+                logger.warning(f"  Webhook returned {response.status_code}, retrying in {RETRY_DELAY}s...")
+                time.sleep(RETRY_DELAY)
+                continue
+            err = f"HTTP {response.status_code}"
+            if response.text:
+                preview = response.text.strip()
+                err += " - " + (preview[:150] + "..." if len(preview) > 150 else preview)
+            logger.error(f"  Webhook failed: {err}")
+            LAST_PUBLISH_ERROR = err
+            return None
+        except Exception as e:
+            logger.warning(f"  Webhook request error (attempt {attempt + 1}/3): {e}")
+            LAST_PUBLISH_ERROR = str(e)[:150]
+            if attempt < 2:
+                time.sleep(RETRY_DELAY)
+    return None
 
 
 def upload_media(file_path, title=""):
@@ -195,7 +260,8 @@ def upload_media(file_path, title=""):
             "Content-Type": mime_type,
         })
 
-        for attempt in range(2):
+        response = None
+        for attempt in range(3):
             response = requests.post(
                 f"{API_BASE}/media",
                 data=file_data,
@@ -205,7 +271,7 @@ def upload_media(file_path, title=""):
             )
             if response.status_code in (200, 201):
                 media_id = (_safe_json(response) or {}).get("id")
-                logger.info(f"  âœ… Image uploaded (Media ID: {media_id})")
+                logger.info(f"  Image uploaded (Media ID: {media_id})")
 
                 if title:
                     requests.post(
@@ -216,35 +282,38 @@ def upload_media(file_path, title=""):
                         timeout=15,
                     )
                 return media_id
-            if response.status_code in (502, 503) and attempt == 0:
-                logger.warning(f"  âš ï¸ Media upload {response.status_code}, retrying in {RETRY_DELAY}s...")
-                import time
+            if response.status_code in (502, 503) and attempt < 2:
+                logger.warning(f"  Media upload returned {response.status_code}, retrying in {RETRY_DELAY}s...")
                 time.sleep(RETRY_DELAY)
+                continue
+            if response.status_code == 403 and attempt < 2:
+                logger.warning(f"  Media upload returned 403, retrying in {RETRY_403_DELAY}s (attempt {attempt + 1}/3)...")
+                time.sleep(RETRY_403_DELAY)
                 continue
             break
 
-        logger.error(f"  âŒ Media upload failed: HTTP {response.status_code}")
-        logger.error(f"     {response.text[:300]}")
+        status_code = response.status_code if response is not None else "unknown"
+        body_preview = response.text[:300] if response is not None else "no response body"
+        logger.error(f"  Media upload failed: HTTP {status_code}")
+        logger.error(f"     {body_preview}")
         return None
 
     except Exception as e:
-        logger.error(f"  âŒ Media upload error: {e}")
+        logger.error(f"  Media upload error: {e}")
         return None
 
 
 def get_or_create_category(name):
     """Get category ID by name, creating it if it doesn't exist."""
-    # Clean name (remove markdown artifacts like **)
     name = re.sub(r'[*_#`]', '', name).strip()
-    
+
     try:
-        # Search by SLUG first (much more reliable)
         response = requests.get(
             f"{API_BASE}/categories",
             params={"slug": name, "per_page": 1},
             auth=AUTH,
             headers=HEADERS,
-            timeout=TIMEOUT
+            timeout=TIMEOUT,
         )
 
         if response.status_code == 200:
@@ -252,13 +321,12 @@ def get_or_create_category(name):
             if categories:
                 return categories[0]["id"]
 
-        # If slug search fails, try NAME search
         response = requests.get(
             f"{API_BASE}/categories",
             params={"search": name, "per_page": 5},
             auth=AUTH,
             headers=HEADERS,
-            timeout=TIMEOUT
+            timeout=TIMEOUT,
         )
 
         if response.status_code == 200:
@@ -267,25 +335,23 @@ def get_or_create_category(name):
                 if cat["name"].lower() == name.lower() or cat["slug"].lower() == name.lower():
                     return cat["id"]
 
-        # When creating, use a friendly display name for "news"; others use slug as name
         create_name = "News" if name.lower() == "news" else name
         response = requests.post(
             f"{API_BASE}/categories",
             json={"name": create_name, "slug": name},
             auth=AUTH,
             headers=HEADERS,
-            timeout=TIMEOUT
+            timeout=TIMEOUT,
         )
 
         if response.status_code in (200, 201):
             cat_id = (_safe_json(response) or {}).get("id")
-            logger.info(f"  ðŸ“ Created category '{create_name}' (ID: {cat_id})")
+            logger.info(f"  Created category '{create_name}' (ID: {cat_id})")
             return cat_id
 
     except Exception as e:
-        logger.error(f"  âŒ Category error for '{name}': {e}")
+        logger.error(f"  Category error for '{name}': {e}")
 
-    # Ultimate fallback: Use "News" if available, else return None
     if name != "News":
         return get_or_create_category("News")
     return None
@@ -299,7 +365,7 @@ def get_or_create_tag(name):
             params={"search": name, "per_page": 5},
             auth=AUTH,
             headers=HEADERS,
-            timeout=TIMEOUT
+            timeout=TIMEOUT,
         )
 
         if response.status_code == 200:
@@ -313,14 +379,14 @@ def get_or_create_tag(name):
             json={"name": name},
             auth=AUTH,
             headers=HEADERS,
-            timeout=TIMEOUT
+            timeout=TIMEOUT,
         )
 
         if response.status_code in (200, 201):
             return (_safe_json(response) or {}).get("id")
 
     except Exception as e:
-        logger.error(f"  âŒ Tag error for '{name}': {e}")
+        logger.error(f"  Tag error for '{name}': {e}")
 
     return None
 
@@ -328,20 +394,27 @@ def get_or_create_tag(name):
 def _set_rankmath_meta(post_id, article):
     """
     Set RankMath SEO metadata on a post.
-    Uses PATCH so only meta is updated. Meta keys must be registered in WP (see deploy/rankmath-rest-snippet.php).
+    Uses PATCH so only meta is updated. Meta keys must be registered in WP.
     """
-    focus_kw = article.get("matched_keyword", "")
+    focus_kw = article.get("matched_keyword", "") or article.get("focus_keyword", "")
     if not focus_kw and article.get("tags"):
         focus_kw = article["tags"][0]
+    if not focus_kw:
+        focus_kw = article.get("title", "")
 
     rankmath_meta = {
         "meta": {
-            "rank_math_title": article.get("title", ""),
+            "rank_math_title": article.get("seo_title", article.get("title", "")),
             "rank_math_description": article.get("meta_description", ""),
             "rank_math_focus_keyword": focus_kw,
             "rank_math_robots": ["index", "follow"],
         }
     }
+
+    faq_schema = article.get("faq_schema", "")
+    if faq_schema:
+        clean_schema = re.sub(r'<script.*?>|</script>', '', faq_schema, flags=re.IGNORECASE | re.DOTALL).strip()
+        rankmath_meta["meta"]["_ssi_schema_faq"] = clean_schema
 
     try:
         response = requests.request(
@@ -354,34 +427,36 @@ def _set_rankmath_meta(post_id, article):
         )
 
         if response.status_code == 200:
-            logger.info(f"  âœ… RankMath SEO metadata set (focus: '{focus_kw}')")
+            logger.info(f"  RankMath SEO metadata set (focus: '{focus_kw}')")
         else:
             logger.warning(
-                f"  âš ï¸ RankMath meta update returned HTTP {response.status_code}. "
+                f"  RankMath meta update returned HTTP {response.status_code}. "
                 "Add deploy/rankmath-rest-snippet.php to your theme's functions.php so meta is writable via REST."
             )
     except Exception as e:
-        logger.warning(f"  âš ï¸ RankMath meta update failed: {e}")
+        logger.warning(f"  RankMath meta update failed: {e}")
+
 
 def update_post_status(post_id, status="publish"):
-    """Update a post's status (e.g., from draft to publish)."""
+    """Update a post's status (e.g., from draft to publish). Uses webhook if configured, else REST API."""
+    if getattr(config, "WP_PUBLISH_WEBHOOK_URL", None) and getattr(config, "WP_PUBLISH_SECRET", None):
+        return _update_status_via_webhook(post_id, status)
     try:
         response = requests.post(
             f"{API_BASE}/posts/{post_id}",
             json={"status": status},
             auth=AUTH,
             headers=HEADERS,
-            timeout=TIMEOUT
+            timeout=TIMEOUT,
         )
         if response.status_code == 200:
             post_data = _safe_json(response) or {}
             link = post_data.get("link")
-            
+
             if status == "publish":
                 try:
                     from writer.seo_prompt import add_published_post
                     from datetime import datetime
-                    # Ensure title is properly fetched
                     title = post_data.get("title", {}).get("rendered", "")
                     slug = post_data.get("slug", "")
                     if link and title:
@@ -389,17 +464,51 @@ def update_post_status(post_id, status="publish"):
                             link,
                             title,
                             slug,
-                            published_at=datetime.utcnow().isoformat()
+                            published_at=datetime.utcnow().isoformat(),
                         )
                 except Exception as e:
-                    logger.warning(f"  âš ï¸ Could not add published post for internal links from draft update: {e}")
-            
+                    logger.warning(f"  Could not add published post for internal links from draft update: {e}")
+
             return link
-        else:
-            logger.error(f"Failed to update post status: HTTP {response.status_code}")
-            return None
+        logger.error(f"Failed to update post status: HTTP {response.status_code}")
+        return None
     except Exception as e:
         logger.error(f"Error updating post status: {e}")
+        return None
+
+
+def _update_status_via_webhook(post_id, status="publish"):
+    """Update post status via webhook using the same endpoint as create."""
+    url = config.WP_PUBLISH_WEBHOOK_URL
+    secret = config.WP_PUBLISH_SECRET
+    if not url or not secret:
+        return None
+
+    try:
+        headers = HEADERS.copy()
+        headers.update({
+            "Content-Type": "application/json",
+            "X-Kisan-Agent-Token": secret,
+        })
+        headers.pop("Accept-Encoding", None)
+
+        response = requests.post(
+            url,
+            json={"action": "publish_draft", "post_id": int(post_id), "status": status},
+            headers=headers,
+            timeout=30,
+        )
+        if response.status_code == 200:
+            data = _safe_json(response)
+            if data and data.get("success"):
+                return data.get("post_url")
+            if not data:
+                logger.error(f"Publish draft webhook: response not JSON: {response.text[:200]}")
+                return None
+        logger.warning(f"Publish draft webhook: HTTP {response.status_code} - {response.text[:300]}")
+        return None
+    except Exception as e:
+        logger.warning(f"Webhook status update failed: {e}")
         return None
 
 
@@ -424,16 +533,19 @@ def test_wordpress_connection():
             params={"per_page": 1},
             auth=AUTH,
             headers=HEADERS,
-            timeout=TIMEOUT
+            timeout=TIMEOUT,
         )
 
         if response.status_code == 200:
             posts = _safe_json(response) or []
-            logger.info(f"WordPress: Connected. Latest post: '{posts[0]['title']['rendered'][:50]}'" if posts else "WordPress: Connected. No posts found.")
+            logger.info(
+                f"WordPress: Connected. Latest post: '{posts[0]['title']['rendered'][:50]}'"
+                if posts else "WordPress: Connected. No posts found."
+            )
             return True
-        else:
-            logger.error(f"WordPress: HTTP {response.status_code}")
-            return False
+
+        logger.error(f"WordPress: HTTP {response.status_code}")
+        return False
 
     except Exception as e:
         logger.error(f"WordPress connection failed: {e}")
@@ -443,10 +555,7 @@ def test_wordpress_connection():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
-    # Test connection
     if test_wordpress_connection():
-        print("âœ… WordPress connection successful!")
+        print("WordPress connection successful!")
     else:
-        print("âŒ WordPress connection failed!")
-
-
+        print("WordPress connection failed!")
