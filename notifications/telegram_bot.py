@@ -135,7 +135,7 @@ def send_article_preview(article_data):
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "✅ Approve Draft (in next job)", "callback_data": "approve"},
+                {"text": "✅ Save Draft Only (in next job)", "callback_data": "approve"},
                 {"text": "🚀 Publish Live (in next job)", "callback_data": "publish_live"},
             ],
             [
@@ -179,7 +179,7 @@ def send_quality_gate_decision(article_data, quality, requested_status="draft"):
 
     lines.extend([
         "",
-        "Do you want to continue anyway, or reject this article?",
+        "Choose whether to keep this as a draft, publish it live, or reject it.",
     ])
 
     message = "\n".join(lines)
@@ -188,7 +188,7 @@ def send_quality_gate_decision(article_data, quality, requested_status="draft"):
         primary_button = {"text": "Continue Live", "callback_data": "quality_continue_publish"}
         secondary_button = {"text": "Save as Draft", "callback_data": "quality_continue_draft"}
     else:
-        primary_button = {"text": "Continue as Draft", "callback_data": "quality_continue_draft"}
+        primary_button = {"text": "Continue and Save Draft", "callback_data": "quality_continue_draft"}
         secondary_button = {"text": "Publish Live Instead", "callback_data": "quality_continue_publish"}
 
     keyboard = {
