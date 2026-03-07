@@ -50,6 +50,7 @@ def _build_rotating_queries():
 
 def fetch_news_headlines():
     stories = []
+    rate_limited = False
 
     try:
         newsapi = NewsApiClient(api_key=config.NEWS_API_KEY)
@@ -78,8 +79,13 @@ def fetch_news_headlines():
                 })
     except Exception as e:
         logger.error(f"NewsAPI top headlines error: {e}")
+        if "rateLimited" in str(e):
+            rate_limited = True
 
     search_queries = _build_rotating_queries()
+    if rate_limited:
+        logger.warning("NewsAPI rate limit reached; skipping query loop for this cycle")
+        search_queries = []
     for query in search_queries:
         try:
             from_date = (datetime.utcnow() - timedelta(hours=30)).strftime("%Y-%m-%d")
@@ -108,6 +114,9 @@ def fetch_news_headlines():
                     })
         except Exception as e:
             logger.error(f"NewsAPI everything error for '{query}': {e}")
+            if "rateLimited" in str(e):
+                rate_limited = True
+                break
             continue
 
     seen_hashes = set()
@@ -141,3 +150,4 @@ def _parse_date(date_str):
         return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(tzinfo=None)
     except Exception:
         return datetime.utcnow()
+

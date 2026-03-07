@@ -396,7 +396,7 @@ DEDUP_WINDOW_HOURS = 72         # Don't re-alert about the same story within 3 d
 BREAKING_SPIKE_SCORE = 95       # Auto-break mode trigger when topic score is very high
 MIN_COVERAGE_TOPICS_PER_CYCLE = 4 # Ensure minimum scheme-angle coverage ideas per scan
 MAX_REFRESH_TOPICS_PER_CYCLE = 2  # Refresh older published scheme pages automatically
-AUTO_GENERATE_BREAKING = True     # Auto-generate draft for breaking scheme updates
+AUTO_GENERATE_BREAKING = False    # Keep manual approval flow; no auto-draft unless explicitly enabled
 REQUIRE_ARTICLE_CONFIRMATION = True # Ask for confirmation before starting article generation
 
 # â”€â”€ Google Trends Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -425,3 +425,4 @@ USE_PLACEHOLDER_IMAGE = os.getenv("USE_PLACEHOLDER_IMAGE", "false").lower() in (
 # â”€â”€ Logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 LOG_FILE = "agent.log"
 LOG_LEVEL = "INFO"
+

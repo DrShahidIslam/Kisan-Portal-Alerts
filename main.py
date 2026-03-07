@@ -47,6 +47,7 @@ _pending_image_path = None  # Featured image awaiting approval
 _update_offset = None     # Telegram getUpdates offset
 _gemini_quota_exhausted = False  # Set True when Gemini daily quota is hit
 _article_attempted_this_run = False  # Limit one article generation per --once run (avoids duplicate failures)
+_publish_in_progress = False  # Prevent duplicate /approve callbacks from repeated publish attempts
 
 def save_pending_state():
     """Save pending article, image path, and telegram offset to disk."""
@@ -337,7 +338,7 @@ def run_scan():
 
     # Breaking mode: auto-start draft generation for highest urgency topic.
     try:
-        if getattr(config, "AUTO_GENERATE_BREAKING", True) and not _pending_article:
+        if getattr(config, "AUTO_GENERATE_BREAKING", False) and not _pending_article:
             breaking = next((t for t in trending_topics if t.get("is_breaking")), None)
             if breaking:
                 send_simple_message(
@@ -648,12 +649,17 @@ def _handle_regenerate_image():
 
 def _handle_approve(status="draft"):
     """Publish the pending article to WordPress."""
-    global _pending_article, _pending_image_path
+    global _pending_article, _pending_image_path, _publish_in_progress
 
     if not _pending_article and not load_pending_state():
         send_simple_message("⚠️ No article pending approval. Generate one first with ✍️ Write Article.")
         return
 
+    if _publish_in_progress:
+        send_simple_message("Publish is already in progress. Please wait 10-20 seconds.")
+        return
+
+    _publish_in_progress = True
     logger.info(f"📤 Publishing article: {_pending_article['title']} (status: {status})")
 
     quality = validate_article_for_publish(_pending_article, min_words=getattr(config, "ARTICLE_MIN_WORDS", 700))
@@ -664,6 +670,7 @@ def _handle_approve(status="draft"):
             f"\n\nWords: {quality['word_count']}, Internal links: {quality['internal_links']}"
         )
         logger.warning(f"Quality gate blocked publish: {quality}")
+        _publish_in_progress = False
         return
 
     try:
@@ -676,6 +683,16 @@ def _handle_approve(status="draft"):
             img_note = " (with featured image)" if _pending_image_path else ""
             send_publish_confirmation(result["post_url"], _pending_article["title"], post_id=result["post_id"], status=status)
             logger.info(f"✅ Published{img_note}: {result['post_url']}")
+            try:
+                from writer.seo_prompt import add_published_post
+                add_published_post(
+                    result["post_url"],
+                    _pending_article["title"],
+                    _pending_article.get("slug", ""),
+                    published_at=datetime.utcnow().isoformat(),
+                )
+            except Exception:
+                pass
 
             try:
                 if _pending_article.get("scheme_id") and _pending_article.get("content_angle"):
@@ -697,6 +714,8 @@ def _handle_approve(status="draft"):
     except Exception as e:
         logger.error(f"WordPress publish error: {e}")
         send_simple_message(f"❌ Publishing error: {str(e)[:200]}")
+    finally:
+        _publish_in_progress = False
 
 def _handle_publish_draft(post_id):
     """Publish an existing draft on WordPress."""
@@ -926,3 +945,4 @@ if __name__ == "__main__":
         logger.info("Done.")
     else:
         run_agent_loop()
+
