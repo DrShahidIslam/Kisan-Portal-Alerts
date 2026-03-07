@@ -107,6 +107,19 @@ def create_post(article, featured_image_path=None, status=None):
                 # ── Step 5: Set RankMath SEO fields ─────────────────────
                 _set_rankmath_meta(post_id, article)
 
+                if status in ["publish", "publish_live", "future"]:
+                    try:
+                        from writer.seo_prompt import add_published_post
+                        from datetime import datetime
+                        add_published_post(
+                            post_url,
+                            article.get("title", ""),
+                            article.get("slug", ""),
+                            published_at=datetime.utcnow().isoformat()
+                        )
+                    except Exception as e:
+                        logger.warning(f"  ⚠️ Could not add published post for internal links: {e}")
+
                 return {
                     "post_id": post_id,
                     "post_url": post_url,
@@ -328,7 +341,27 @@ def update_post_status(post_id, status="publish"):
             timeout=TIMEOUT
         )
         if response.status_code == 200:
-            return response.json().get("link")
+            post_data = response.json()
+            link = post_data.get("link")
+            
+            if status == "publish":
+                try:
+                    from writer.seo_prompt import add_published_post
+                    from datetime import datetime
+                    # Ensure title is properly fetched
+                    title = post_data.get("title", {}).get("rendered", "")
+                    slug = post_data.get("slug", "")
+                    if link and title:
+                        add_published_post(
+                            link,
+                            title,
+                            slug,
+                            published_at=datetime.utcnow().isoformat()
+                        )
+                except Exception as e:
+                    logger.warning(f"  ⚠️ Could not add published post for internal links from draft update: {e}")
+            
+            return link
         else:
             logger.error(f"Failed to update post status: HTTP {response.status_code}")
             return None

@@ -1,5 +1,5 @@
-"""
-Spike Detector — Aggregates stories from all sources, deduplicates,
+﻿"""
+Spike Detector - Aggregates stories from all sources, deduplicates,
 calculates spike scores, and returns trending topics worth covering.
 """
 import logging
@@ -11,6 +11,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
+from detection.scheme_registry import find_best_scheme, infer_content_angle
+from detection.language_router import detect_topic_language
 from database.db import (
     get_connection, is_story_seen, add_story, record_keyword_mention,
     get_keyword_baseline
@@ -18,25 +20,26 @@ from database.db import (
 
 logger = logging.getLogger(__name__)
 
+OFFICIAL_SOURCE_HINTS = (
+    "pib", "gov", "icar", "agriculture", "ministry", "state portal"
+)
+HIGH_INTENT_TERMS = (
+    "installment", "kist", "status", "ekyc", "eligibility", "last date",
+    "deadline", "apply", "registration", "beneficiary"
+)
+
 
 def _cluster_stories(stories):
-    """
-    Group related stories by topic. Stories about the same event
-    (e.g., "Italy qualifies" from ESPN + BBC) get clustered together.
-    """
     clusters = defaultdict(list)
 
     for story in stories:
-        # Create a simplified topic key from title words
         title_words = set(story["title"].lower().split())
-        # Remove common words
         stop_words = {"the", "a", "an", "is", "are", "was", "were", "in", "on", "at",
                       "to", "for", "of", "with", "and", "or", "but", "not", "this",
                       "that", "it", "as", "by", "from", "has", "have", "had", "will",
                       "be", "been", "can", "could", "would", "should", "do", "does"}
         key_words = title_words - stop_words
 
-        # Find best matching existing cluster
         best_match = None
         best_score = 0
 
@@ -44,40 +47,33 @@ def _cluster_stories(stories):
             cluster_words = set(cluster_key.split("|"))
             overlap = len(key_words & cluster_words)
             score = overlap / max(len(key_words | cluster_words), 1)
-            if score > best_score and score > 0.3:  # 30% word overlap threshold
+            if score > best_score and score > 0.3:
                 best_match = cluster_key
                 best_score = score
 
         if best_match:
             clusters[best_match].append(story)
         else:
-            cluster_key = "|".join(sorted(key_words)[:8])  # Use first 8 key words
+            cluster_key = "|".join(sorted(key_words)[:8])
             clusters[cluster_key].append(story)
 
     return clusters
 
 
 def _calculate_spike_score(cluster_stories, conn):
-    """
-    Calculate a spike score for a cluster of stories.
-    Higher score = more newsworthy / trending.
-    """
     score = 0.0
     factors = []
 
-    # Factor 1: Number of sources covering this story
     unique_sources = set(s["source"] for s in cluster_stories)
     source_count = len(unique_sources)
-    score += source_count * 15  # Each source = 15 points
+    score += source_count * 15
     factors.append(f"{source_count} sources")
 
-    # Factor 2: Multiple source types (RSS + NewsAPI + Trends = stronger signal)
     source_types = set(s.get("source_type", "unknown") for s in cluster_stories)
     if len(source_types) > 1:
-        score += len(source_types) * 10
+        score += len(source_types) * 12
         factors.append(f"{len(source_types)} source types")
 
-    # Factor 3: Recency — stories from last 2 hours score higher
     now = datetime.utcnow()
     for story in cluster_stories:
         pub = story.get("published_at", now)
@@ -85,30 +81,43 @@ def _calculate_spike_score(cluster_stories, conn):
             hours_old = (now - pub).total_seconds() / 3600
             if hours_old < 2:
                 score += 20
-                factors.append("< 2h old")
             elif hours_old < 6:
                 score += 10
 
-    # Factor 4: Google Trends rising indicator
+    # Trends velocity boost
+    spike_ratios = [float(s.get("spike_ratio", 0) or 0) for s in cluster_stories]
+    max_ratio = max(spike_ratios) if spike_ratios else 0
+    if max_ratio >= 2:
+        boost = min(30, max_ratio * 5)
+        score += boost
+        factors.append(f"trend velocity {max_ratio:.1f}x")
+
     for story in cluster_stories:
         if story.get("is_rising"):
             score += 25
             factors.append("trending on Google")
             break
 
-    # Factor 5: High-value agri/scheme keywords (installment, eKYC, eligibility, etc.)
-    high_value_keywords = getattr(config, "HIGH_VALUE_AGRI_KEYWORDS", [
-        "installment", "ekyc", "eligibility", "status check", "new scheme", "enrollment",
-    ])
+    high_value_keywords = getattr(config, "HIGH_VALUE_AGRI_KEYWORDS", HIGH_INTENT_TERMS)
     for story in cluster_stories:
         text = (story.get("title", "") + " " + story.get("summary", "")).lower()
-        for hvk in high_value_keywords:
-            if hvk.lower() in text:
-                score += 15
-                factors.append(f"high-value: {hvk}")
-                break
+        matched = [kw for kw in high_value_keywords if kw.lower() in text]
+        if matched:
+            score += min(20, 6 + len(matched) * 3)
+            factors.append("high-intent search intent")
+            break
 
-    # Factor 6: Keyword baseline spike check
+    # Official source trust boost
+    trusted_hits = 0
+    for story in cluster_stories:
+        source_blob = f"{story.get('source', '')} {story.get('url', '')}".lower()
+        if any(h in source_blob for h in OFFICIAL_SOURCE_HINTS):
+            trusted_hits += 1
+    if trusted_hits:
+        trust_score = min(20, trusted_hits * 4)
+        score += trust_score
+        factors.append("official-source signal")
+
     for story in cluster_stories:
         kw = story.get("matched_keyword", "")
         if kw:
@@ -124,7 +133,6 @@ def _calculate_spike_score(cluster_stories, conn):
 
 
 def _is_excluded(text):
-    """Check if text contains any exclusion keywords (cricket, rugby, etc.)."""
     text_lower = text.lower()
     for kw in getattr(config, "EXCLUDE_KEYWORDS", []):
         if kw.lower() in text_lower:
@@ -133,10 +141,6 @@ def _is_excluded(text):
 
 
 def _suggest_article_title(cluster_stories):
-    """
-    Derive a clear, article-ready headline from cluster content (installments, eKYC, schemes).
-    Returns a string or None; when not None, use it as the topic/title for the article.
-    """
     import re
     combined = " ".join(s.get("title", "") + " " + s.get("summary", "") for s in cluster_stories)
     combined_lower = combined.lower()
@@ -146,72 +150,47 @@ def _suggest_article_title(cluster_stories):
             matched_kw = s["matched_keyword"]
             break
 
-    # Installment: "PM Kisan 17th Installment Date 2026" or "PM Kisan 18th Installment Released"
     instal_match = re.search(r"(\d+)(?:st|nd|rd|th)?\s*instal?l?ment", combined_lower, re.I)
     if instal_match and ("pm kisan" in combined_lower or "pm-kisan" in combined_lower or matched_kw and "kisan" in matched_kw.lower()):
         num = instal_match.group(1)
-        return f"PM Kisan {num}th Installment Date and Status 2026"
+        return f"PM Kisan {num}th Installment Date and Status {datetime.utcnow().year}"
 
-    # eKYC
     if "ekyc" in combined_lower or "e-kyc" in combined_lower:
         if "pm kisan" in combined_lower or (matched_kw and "kisan" in matched_kw.lower()):
-            return "PM Kisan eKYC Deadline 2026: How to Complete and Check Status"
-        return "Farmer Scheme eKYC: How to Complete and Last Date 2026"
+            return f"PM Kisan eKYC Deadline {datetime.utcnow().year}: How to Complete and Check Status"
+        return f"Farmer Scheme eKYC Update {datetime.utcnow().year}: Process and Last Date"
 
-    # Status check / how to check
     if "status check" in combined_lower or "check status" in combined_lower:
         if "pm kisan" in combined_lower or (matched_kw and "kisan" in matched_kw.lower()):
-            return "PM Kisan Status Check 2026: How to Check Payment and Beneficiary Status"
+            return f"PM Kisan Status Check {datetime.utcnow().year}: Payment and Beneficiary Status"
         if "pmfby" in combined_lower or "fasal bima" in combined_lower:
             return "PMFBY Claim Status Check: How to Check Crop Insurance Status"
 
-    # Enrollment / registration
     if "enrollment" in combined_lower or "enrolment" in combined_lower or "registration" in combined_lower:
         if "pmfby" in combined_lower or "rabi" in combined_lower or "kharif" in combined_lower:
-            return "PMFBY Rabi/Kharif Enrollment 2025-26: Last Date and How to Apply"
+            return "PMFBY Rabi/Kharif Enrollment: Last Date and How to Apply"
         if "enam" in combined_lower or "e-nam" in combined_lower:
-            return "e-NAM 2.0 Registration: Mandi Registration and Price Guide"
+            return "e-NAM Registration: Mandi Registration and Price Guide"
 
-    # New scheme / announced
     if "new scheme" in combined_lower or "launched" in combined_lower or "announced" in combined_lower:
         for s in cluster_stories:
             t = s.get("title", "")
-            if len(t) > 15 and len(t) < 80:
-                return t  # Use the story title as the article title
+            if 15 < len(t) < 80:
+                return t
 
     return None
 
 
 def detect_spikes(all_stories, trends_data=None):
-    """
-    Main detection function.
-    Takes all stories from RSS + NewsAPI + Trends and returns
-    ranked trending topics with spike scores.
-
-    Returns a list of dicts:
-    [
-        {
-            "topic": "PM Kisan 17th instalment released for farmers",
-            "score": 85.0,
-            "factors": ["3 sources", "trending on Google", "< 2h old"],
-            "stories": [...],
-            "sources": ["ESPN", "BBC", "NewsAPI"],
-            "top_url": "https://...",
-            "matched_keyword": "italy",
-        },
-        ...
-    ]
-    """
     conn = get_connection()
 
-    # Merge trends data into stories format if provided
     combined = list(all_stories)
     if trends_data:
         for trend in trends_data:
             if trend.get("is_rising"):
                 combined.append({
                     "title": f"Rising search: {trend['keyword']}",
-                    "summary": f"Google Trends shows '{trend['keyword']}' is rising ({trend.get('spike_ratio', 0)}x above average)",
+                    "summary": f"Google Trends shows '{trend['keyword']}' rising ({trend.get('spike_ratio', 0)}x)",
                     "url": f"https://trends.google.com/trends/explore?q={trend['keyword'].replace(' ', '+')}",
                     "source": trend.get("source", "Google Trends"),
                     "source_type": "trends",
@@ -219,9 +198,9 @@ def detect_spikes(all_stories, trends_data=None):
                     "published_at": trend.get("recorded_at", datetime.utcnow()),
                     "story_hash": hashlib.sha256(trend["keyword"].encode()).hexdigest()[:16],
                     "is_rising": True,
+                    "spike_ratio": trend.get("spike_ratio", 0),
                 })
 
-    # ── Relevance filter: remove stories with excluded keywords ───
     filtered = []
     excluded_count = 0
     for story in combined:
@@ -233,10 +212,9 @@ def detect_spikes(all_stories, trends_data=None):
         filtered.append(story)
 
     if excluded_count > 0:
-        logger.info(f"Spike Detector: Excluded {excluded_count} irrelevant stories (cricket/rugby/etc.)")
+        logger.info(f"Spike Detector: Excluded {excluded_count} irrelevant stories")
     combined = filtered
 
-    # Filter out already-seen stories
     new_stories = []
     for story in combined:
         if not is_story_seen(conn, story["story_hash"], config.DEDUP_WINDOW_HOURS):
@@ -252,7 +230,6 @@ def detect_spikes(all_stories, trends_data=None):
 
     logger.info(f"Spike Detector: Processing {len(new_stories)} new stories")
 
-    # Record keyword mentions for baseline tracking
     keyword_counts = defaultdict(int)
     for story in new_stories:
         kw = story.get("matched_keyword", "")
@@ -261,23 +238,24 @@ def detect_spikes(all_stories, trends_data=None):
     for kw, count in keyword_counts.items():
         record_keyword_mention(conn, kw, "combined", count)
 
-    # Cluster related stories
     clusters = _cluster_stories(new_stories)
 
-    # Score each cluster
     trending_topics = []
     min_score = getattr(config, "SPIKE_MIN_SCORE", 40)
-    for cluster_key, cluster_stories in clusters.items():
+    breaking_score = getattr(config, "BREAKING_SPIKE_SCORE", 95)
+
+    for _, cluster_stories in clusters.items():
         score, factors = _calculate_spike_score(cluster_stories, conn)
 
-        # Only report clusters with meaningful score
         if score >= min_score:
             best_story = max(cluster_stories, key=lambda s: len(s["title"]))
-            # Prefer a clear, article-ready headline (installment, eKYC, status check, etc.)
             suggested = _suggest_article_title(cluster_stories)
             topic_title = suggested if suggested else best_story["title"]
-            # Stable hash for Telegram callback and cache
             story_hash = hashlib.sha256((topic_title + best_story.get("url", "")).encode()).hexdigest()[:16]
+
+            scheme = find_best_scheme(f"{topic_title} {best_story.get('matched_keyword', '')}")
+            angle = infer_content_angle(topic_title)
+            lang = detect_topic_language(topic_title, cluster_stories, best_story.get("matched_keyword", ""))
 
             trending_topics.append({
                 "topic": topic_title,
@@ -289,9 +267,12 @@ def detect_spikes(all_stories, trends_data=None):
                 "matched_keyword": best_story.get("matched_keyword", ""),
                 "story_count": len(cluster_stories),
                 "story_hash": story_hash,
+                "scheme_id": scheme["id"] if scheme else "",
+                "content_angle": angle,
+                "lang": lang,
+                "is_breaking": score >= breaking_score,
             })
 
-    # Sort by score (highest first)
     trending_topics.sort(key=lambda x: x["score"], reverse=True)
 
     conn.close()
@@ -299,34 +280,5 @@ def detect_spikes(all_stories, trends_data=None):
     return trending_topics
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
-    # Test with some fake stories
-    test_stories = [
-        {
-            "title": "PM Kisan 17th instalment: Centre releases Rs 20,000 cr to 9.3 cr farmers",
-            "summary": "The government has released the 17th instalment under PM-Kisan Samman Nidhi",
-            "url": "https://example.com/pm-kisan-17",
-            "source": "PIB Agriculture",
-            "source_type": "rss",
-            "matched_keyword": "PM Kisan",
-            "published_at": datetime.utcnow(),
-            "story_hash": "test_hash_1",
-        },
-        {
-            "title": "PM Kisan instalment: How to check status and eKYC",
-            "summary": "Farmers can check PM-Kisan 17th instalment status on the official portal",
-            "url": "https://example.com/pm-kisan-status",
-            "source": "Krishi Jagran",
-            "source_type": "rss",
-            "matched_keyword": "PM Kisan",
-            "published_at": datetime.utcnow(),
-            "story_hash": "test_hash_2",
-        },
-    ]
 
-    topics = detect_spikes(test_stories)
-    for t in topics:
-        print(f"\n🔥 [{t['score']}] {t['topic']}")
-        print(f"   Sources: {', '.join(t['sources'])}")
-        print(f"   Factors: {', '.join(t['factors'])}")
+

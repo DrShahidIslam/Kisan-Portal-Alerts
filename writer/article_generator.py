@@ -1,5 +1,5 @@
-"""
-Article Generator — Uses Gemini to write SEO-optimized articles
+﻿"""
+Article Generator â€” Uses Gemini to write SEO-optimized articles
 from source material gathered by the source fetcher.
 """
 import logging
@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 from writer.source_fetcher import fetch_multiple_sources
 from writer.seo_prompt import build_article_prompt, get_category_for_topic
+from detection.language_router import normalize_lang
 from gemini_client import generate_content_with_fallback
 
 logger = logging.getLogger(__name__)
@@ -66,9 +67,9 @@ def generate_article(topic, source_urls=None):
     """
     Generate a complete SEO-optimized article for a trending topic.
     """
-    logger.info(f"📝 Generating article for: {topic.get('topic', 'Unknown')}")
+    logger.info(f"ðŸ“ Generating article for: {topic.get('topic', 'Unknown')}")
 
-    # ── Step 1: Gather source material ────────────────────────────
+    # â”€â”€ Step 1: Gather source material â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if source_urls is None:
         source_urls = []
         for story in topic.get("stories", []):
@@ -93,17 +94,17 @@ def generate_article(topic, source_urls=None):
                 
     if is_pure_trend:
         keyword = topic.get("matched_keyword") or topic.get("topic", "").replace("Rising search:", "").strip()
-        logger.info(f"  🔍 Pure trend detected. Searching active news for: '{keyword}'")
+        logger.info(f"  ðŸ” Pure trend detected. Searching active news for: '{keyword}'")
         found_urls = _search_news_for_trend(keyword)
         if found_urls:
             source_urls.extend(found_urls)
-            logger.info(f"  ✅ Found {len(found_urls)} background articles for context.")
+            logger.info(f"  âœ… Found {len(found_urls)} background articles for context.")
 
     logger.info(f"  Fetching {len(source_urls)} source URLs...")
     source_texts = fetch_multiple_sources(source_urls, max_sources=8)
 
     if not source_texts:
-        logger.warning("  ⚠️ No source material could be extracted. Using topic summary only.")
+        logger.warning("  âš ï¸ No source material could be extracted. Using topic summary only.")
         source_texts = [{
             "title": topic.get("topic", ""),
             "text": "\n".join(s.get("summary", "") for s in topic.get("stories", [])),
@@ -111,36 +112,39 @@ def generate_article(topic, source_urls=None):
             "url": "",
         }]
 
-    # ── Step 2: Build the prompt ──────────────────────────────────
+    # â”€â”€ Step 2: Build the prompt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    target_lang = normalize_lang(topic.get("lang", "en"))
+
     try:
         prompt = build_article_prompt(
             topic_title=topic.get("topic", "Agriculture News Update"),
             source_texts=source_texts,
             matched_keyword=topic.get("matched_keyword", ""),
+            target_lang=target_lang,
         )
     except Exception as e:
-        logger.error(f"  ❌ Failed to build prompt: {e}")
+        logger.error(f"  âŒ Failed to build prompt: {e}")
         return None
 
-    # ── Step 3: Call Gemini ───────────────────────────────────────
+    # â”€â”€ Step 3: Call Gemini â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try:
-        logger.info("  🤖 Calling Gemini API...")
+        logger.info("  ðŸ¤– Calling Gemini API...")
         response = generate_content_with_fallback(
             model=config.GEMINI_MODEL,
             contents=prompt
         )
         raw_output = (getattr(response, "text", None) or "").strip()
         if not raw_output:
-            logger.error("  ❌ Gemini returned empty or blocked content (no text). Try again or check API/safety settings.")
+            logger.error("  âŒ Gemini returned empty or blocked content (no text). Try again or check API/safety settings.")
             return None
-        logger.info(f"  ✅ Gemini responded ({len(raw_output)} chars)")
+        logger.info(f"  âœ… Gemini responded ({len(raw_output)} chars)")
         logger.debug(f"RAW AI OUTPUT:\n{raw_output}")
 
     except Exception as e:
-        logger.error(f"  ❌ Gemini API error: {e}")
+        logger.error(f"  âŒ Gemini API error: {e}")
         return None
 
-    # ── Step 4: Parse structured output ───────────────────────────
+    # â”€â”€ Step 4: Parse structured output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     article = _parse_article_output(
         raw_output,
         matched_keyword=topic.get("matched_keyword", ""),
@@ -150,7 +154,7 @@ def generate_article(topic, source_urls=None):
     if article:
         # Ensure we have usable content (model sometimes omits markers)
         if len(article.get("content", "") or "") < 100:
-            logger.warning("  ⚠️ Parsed content too short; treating as parse failure.")
+            logger.warning("  âš ï¸ Parsed content too short; treating as parse failure.")
             logger.debug(f"  Raw output preview: {raw_output[:500]}...")
             return None
         article["sources_used"] = [s.get("source_domain", "") for s in source_texts]
@@ -160,9 +164,10 @@ def generate_article(topic, source_urls=None):
             topic.get("topic", ""),
             topic.get("matched_keyword", ""),
         )
-        logger.info(f"  ✅ Article generated: '{article['title']}' (category: {article['category']})")
+        article["lang"] = target_lang if target_lang in ("en", "hi", "te") else article.get("lang", "en")
+        logger.info(f"  âœ… Article generated: '{article['title']}' (category: {article['category']})")
     else:
-        logger.error("  ❌ Failed to parse Gemini output. Check that the model returns TITLE, CONTENT_START/END, etc.")
+        logger.error("  âŒ Failed to parse Gemini output. Check that the model returns TITLE, CONTENT_START/END, etc.")
         logger.debug(f"  Raw output preview: {raw_output[:400]}...")
 
     return article
@@ -182,7 +187,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             # Strip markdown artifacts and quotes
             return re.sub(r'[*_#`"]', '', val).strip()
 
-        # ── 1. TITLE ── (enforce max 60 chars for SEO)
+        # â”€â”€ 1. TITLE â”€â”€ (enforce max 60 chars for SEO)
         MAX_TITLE_LEN = 60
         title_match = re.search(r'(?:1\.|TITLE:)\s*(.+?)(?:\n|2\.|META_DESCRIPTION:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
         if title_match:
@@ -193,7 +198,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         if len(result["title"]) > MAX_TITLE_LEN:
             result["title"] = result["title"][:MAX_TITLE_LEN].rsplit(" ", 1)[0] or result["title"][:MAX_TITLE_LEN]
 
-        # ── 2. META_DESCRIPTION ── (attractive for search; 140–155 chars ideal)
+        # â”€â”€ 2. META_DESCRIPTION â”€â”€ (attractive for search; 140â€“155 chars ideal)
         meta_match = re.search(r'(?:2\.|META_DESCRIPTION:)\s*(.+?)(?:\n|3\.|SLUG:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
         if meta_match:
             result["meta_description"] = clean_meta(meta_match.group(1))
@@ -204,7 +209,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             else:
                 result["meta_description"] = result["title"][:155]
 
-        # ── 3. SLUG ── (short, max 50 chars, lowercase-kebab)
+        # â”€â”€ 3. SLUG â”€â”€ (short, max 50 chars, lowercase-kebab)
         MAX_SLUG_LEN = 50
         slug_match = re.search(r'(?:3\.|SLUG:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
         if slug_match:
@@ -213,25 +218,25 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             result["slug"] = re.sub(r'[^a-z0-9]+', '-', result["title"].lower()).strip('-')
         result["slug"] = result["slug"][:MAX_SLUG_LEN].rstrip('-')
 
-        # ── 4. TAGS ──
+        # â”€â”€ 4. TAGS â”€â”€
         tags_match = re.search(r'(?:4\.|TAGS:)\s*(.+?)(?:\n|5\.|CATEGORY:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
         if tags_match:
             result["tags"] = [clean_meta(t) for t in tags_match.group(1).split(",") if t.strip()]
         else:
             result["tags"] = ["agriculture", "india"]
 
-        # ── 5. CATEGORY ──
+        # â”€â”€ 5. CATEGORY â”€â”€
         category_match = re.search(r'(?:5\.|CATEGORY:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
         result["category"] = clean_meta(category_match.group(1).lower()) if category_match else "news"
         # Use provided keyword or title as fallback to avoid NameError if local lookup fails
         final_kw = matched_keyword if matched_keyword else clean_meta(topic_title)
         result["matched_keyword"] = final_kw
 
-        # ── 6. LANG ──
+        # â”€â”€ 6. LANG â”€â”€
         lang_match = re.search(r'(?:6\.|LANG:)\s*([a-z]{2})', raw_text, re.IGNORECASE)
         result["lang"] = clean_meta(lang_match.group(1).lower()) if lang_match else "en"
 
-        # ── 7. CONTENT ──
+        # â”€â”€ 7. CONTENT â”€â”€
         content_block_match = re.search(r'---CONTENT_START---(.*?)---CONTENT_END---', raw_text, re.DOTALL)
         if content_block_match:
             result["content"] = content_block_match.group(1).strip()
@@ -247,7 +252,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         if not result["content"]:
             result["content"] = raw_text
 
-        # Meta description: ensure 140–155 chars and attractive (fallback from content if too short)
+        # Meta description: ensure 140â€“155 chars and attractive (fallback from content if too short)
         md = (result.get("meta_description") or result["title"]).strip()[:155]
         if len(md) < 100 and result["content"]:
             first = result["content"].split(".")[0].strip()[:120]
@@ -255,7 +260,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
                 md = (md + " " + first).strip()[:155]
         result["meta_description"] = md or result["title"][:155]
 
-        # ── 7. FAQ ── Extract FAQPage schema; keep only if it has real questions (not placeholders)
+        # â”€â”€ 7. FAQ â”€â”€ Extract FAQPage schema; keep only if it has real questions (not placeholders)
         result["faq_html"] = ""
         faq_block = re.search(r'---FAQ_START---(.*?)---FAQ_END---', raw_text, re.DOTALL)
         if faq_block:
@@ -272,7 +277,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         placeholder_phrases = (
             "Insert Question", "Insert detailed answer", "First real question in full",
             "Second real question?", "Third real question?", "[write actual question]",
-            "[Write 2–4 sentence answer", "[Write answer.]"
+            "[Write 2â€“4 sentence answer", "[Write answer.]"
         )
         if result["faq_html"] and any(p in result["faq_html"] for p in placeholder_phrases):
             result["faq_html"] = ""
@@ -281,7 +286,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             if not re.search(r'"name":\s*"[^"]*\?"', result["faq_html"]):
                 result["faq_html"] = ""
 
-        # ── Markdown to HTML ──
+        # â”€â”€ Markdown to HTML â”€â”€
         import markdown
 
         result["content_html"] = markdown.markdown(
@@ -289,7 +294,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             extensions=['nl2br', 'sane_lists']
         )
 
-        # ── Build FAQ from schema (ALWAYS, as a guarantee) ──
+        # â”€â”€ Build FAQ from schema (ALWAYS, as a guarantee) â”€â”€
         # This ensures visible questions even when the AI outputs only plain paragraphs.
         def _build_faq_from_schema(faq_html_str):
             """Parse FAQ JSON-LD schema and return standard HTML with visible questions."""
@@ -340,7 +345,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
                         result["content_html"] = result["content_html"][:start] + new_section
                     else:
                         result["content_html"] += "\n\n<!-- wp:heading {\"level\":2} -->\n<h2>Frequently Asked Questions</h2>\n<!-- /wp:heading -->\n\n" + faq_list_html
-                    logger.info("  ✅ FAQ list rebuilt from schema (questions now visible)")
+                    logger.info("  âœ… FAQ list rebuilt from schema (questions now visible)")
             except Exception as faq_e:
                 logger.debug(f"FAQ list build failed: {faq_e}")
 
@@ -366,7 +371,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         return result
 
     except Exception as e:
-        logger.exception("  ❌ Parse error")
+        logger.exception("  âŒ Parse error")
         return None
 
 
@@ -381,3 +386,5 @@ if __name__ == "__main__":
     if article:
         print(f"TITLE: {article['title']}")
         print(f"CONTENT PREVIEW: {article['full_content'][:500]}...")
+
+

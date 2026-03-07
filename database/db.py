@@ -1,10 +1,9 @@
-"""
+﻿"""
 SQLite database for tracking seen stories, keyword baselines, and sent notifications.
 Handles deduplication and spike history.
 """
 import sqlite3
 import os
-import time
 from datetime import datetime, timedelta
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "agent.db")
@@ -63,9 +62,21 @@ def _create_tables(conn):
             recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS content_coverage (
+            scheme_id TEXT NOT NULL,
+            content_angle TEXT NOT NULL,
+            last_generated_at TIMESTAMP,
+            last_published_at TIMESTAMP,
+            last_topic TEXT,
+            generation_count INTEGER DEFAULT 0,
+            publish_count INTEGER DEFAULT 0,
+            PRIMARY KEY (scheme_id, content_angle)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_seen_stories_hash ON seen_stories(story_hash);
         CREATE INDEX IF NOT EXISTS idx_keyword_mentions_keyword ON keyword_mentions(keyword);
         CREATE INDEX IF NOT EXISTS idx_notifications_hash ON notifications_sent(story_hash);
+        CREATE INDEX IF NOT EXISTS idx_content_coverage_scheme ON content_coverage(scheme_id);
     """)
     conn.commit()
 
@@ -90,7 +101,7 @@ def add_story(conn, story_hash, title, source, url, keywords=""):
         )
         conn.commit()
     except sqlite3.IntegrityError:
-        pass  # Already exists
+        pass
 
 
 def mark_notified(conn, story_hash):
@@ -169,7 +180,7 @@ def get_topic_from_cache(conn, story_hash):
         "SELECT topic_json FROM topic_cache WHERE story_hash LIKE ?",
         (f"{story_hash}%",)
     ).fetchone()
-    
+
     if row and row["topic_json"]:
         try:
             return json.loads(row["topic_json"])
@@ -179,14 +190,54 @@ def get_topic_from_cache(conn, story_hash):
     return None
 
 
+def mark_content_generated(conn, scheme_id, content_angle, topic):
+    """Track that a scheme-angle content idea was generated."""
+    if not scheme_id or not content_angle:
+        return
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        """INSERT INTO content_coverage
+           (scheme_id, content_angle, last_generated_at, last_topic, generation_count)
+           VALUES (?, ?, ?, ?, 1)
+           ON CONFLICT(scheme_id, content_angle)
+           DO UPDATE SET
+             last_generated_at = excluded.last_generated_at,
+             last_topic = excluded.last_topic,
+             generation_count = generation_count + 1
+        """,
+        (scheme_id, content_angle, now, (topic or "")[:255]),
+    )
+    conn.commit()
+
+
+def mark_content_published(conn, scheme_id, content_angle, topic):
+    """Track that a scheme-angle content item was published."""
+    if not scheme_id or not content_angle:
+        return
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        """INSERT INTO content_coverage
+           (scheme_id, content_angle, last_generated_at, last_published_at, last_topic, generation_count, publish_count)
+           VALUES (?, ?, ?, ?, ?, 1, 1)
+           ON CONFLICT(scheme_id, content_angle)
+           DO UPDATE SET
+             last_generated_at = excluded.last_generated_at,
+             last_published_at = excluded.last_published_at,
+             last_topic = excluded.last_topic,
+             generation_count = generation_count + 1,
+             publish_count = publish_count + 1
+        """,
+        (scheme_id, content_angle, now, now, (topic or "")[:255]),
+    )
+    conn.commit()
+
+
 def cleanup_old_data(conn, days=7):
     """Remove data older than N days to keep the DB small."""
     cutoff = datetime.utcnow() - timedelta(days=days)
     conn.execute("DELETE FROM keyword_mentions WHERE recorded_at < ?", (cutoff.isoformat(),))
     conn.execute("DELETE FROM trend_snapshots WHERE recorded_at < ?", (cutoff.isoformat(),))
 
-    # Also clean up seen_stories and notifications older than 14 days
-    # (2x the 7-day dedup window as safety margin)
     old_cutoff = datetime.utcnow() - timedelta(days=14)
     conn.execute("DELETE FROM seen_stories WHERE first_seen_at < ?", (old_cutoff.isoformat(),))
     conn.execute("DELETE FROM notifications_sent WHERE sent_at < ?", (old_cutoff.isoformat(),))

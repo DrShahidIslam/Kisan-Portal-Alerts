@@ -1,6 +1,5 @@
-"""
-Google Trends Monitor — Tracks rising search queries related to Indian Agriculture.
-Uses pytrends to check interest levels and detect spikes in search volume.
+﻿"""
+Google Trends Monitor - Tracks rising search queries related to Indian Agriculture.
 """
 import logging
 import time
@@ -12,21 +11,26 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
+from detection.scheme_registry import get_trends_keywords
 
 logger = logging.getLogger(__name__)
 
 
 def _build_keyword_batches(keywords, batch_size=5):
-    """Split keywords into batches of 5 (pytrends limit per request)."""
     for i in range(0, len(keywords), batch_size):
         yield keywords[i:i + batch_size]
 
 
+def _rotating_keywords(all_keywords, limit):
+    if not all_keywords:
+        return []
+    hour = datetime.utcnow().hour
+    start = (hour * 3) % len(all_keywords)
+    ring = all_keywords[start:] + all_keywords[:start]
+    return ring[:limit]
+
+
 def fetch_trending_queries():
-    """
-    Check Google Trends for rising interest in related keywords.
-    Returns a list of trend dicts with keyword, interest score, and rising status.
-    """
     trends = []
 
     try:
@@ -35,15 +39,15 @@ def fetch_trending_queries():
         logger.error(f"Failed to initialize pytrends: {e}")
         return trends
 
-    # Check core keywords for interest over time
-    core_keywords = config.ALL_KEYWORDS[:10]  # Top 10 primary keywords
+    registry_keywords = get_trends_keywords(limit=getattr(config, "TRENDS_KEYWORDS_MAX", 40))
+    fallback_keywords = config.ALL_KEYWORDS[:20]
+    candidate_keywords = registry_keywords or fallback_keywords
+    core_keywords = _rotating_keywords(candidate_keywords, getattr(config, "TRENDS_KEYWORDS_PER_CYCLE", 25))
 
     for batch in _build_keyword_batches(core_keywords):
         try:
             logger.info(f"Checking Google Trends for: {batch}")
             pytrends.build_payload(batch, cat=0, timeframe='now 7-d', geo=config.TRENDS_GEO)
-
-            # Get interest over time
             interest_df = pytrends.interest_over_time()
             if interest_df is not None and not interest_df.empty:
                 for keyword in batch:
@@ -51,10 +55,10 @@ def fetch_trending_queries():
                         values = interest_df[keyword].tolist()
                         if len(values) >= 2:
                             current = values[-1]
-                            avg_recent = sum(values[-6:]) / len(values[-6:]) if len(values) >= 6 else values[-1]
                             avg_overall = sum(values) / len(values)
-
-                            is_rising = current > avg_overall * 1.5  # 50% above average = rising
+                            prior = max(1, values[-2])
+                            velocity = current / prior
+                            is_rising = current > avg_overall * 1.35 or velocity >= 1.4
 
                             trends.append({
                                 "keyword": keyword,
@@ -62,108 +66,92 @@ def fetch_trending_queries():
                                 "avg_interest": round(avg_overall, 1),
                                 "is_rising": is_rising,
                                 "spike_ratio": round(current / max(avg_overall, 1), 2),
+                                "velocity": round(velocity, 2),
                                 "source": "google_trends",
                                 "source_type": "trends",
                                 "recorded_at": datetime.utcnow(),
                             })
 
                             if is_rising:
-                                logger.info(f"  🔥 RISING: '{keyword}' — {current} vs avg {avg_overall:.0f} ({current/max(avg_overall,1):.1f}x)")
+                                logger.info(f"  RISING: '{keyword}' current={current} avg={avg_overall:.0f} vel={velocity:.2f}")
 
-            # Rate limit — be polite to Google
-            time.sleep(5)
+            time.sleep(4)
 
         except Exception as e:
             logger.warning(f"Google Trends error for batch {batch}: {e}")
-            time.sleep(10)
+            time.sleep(8)
             continue
 
-    # Also check related rising queries for top keywords
-    try:
-        top_keyword = config.CENTRAL_SCHEMES[0] if getattr(config, "CENTRAL_SCHEMES", []) else "agriculture"
-        pytrends.build_payload([top_keyword], cat=0, timeframe='now 7-d', geo=config.TRENDS_GEO)
-        related = pytrends.related_queries()
+    # Related rising queries for top 3 core keywords
+    for top_keyword in core_keywords[:3]:
+        try:
+            pytrends.build_payload([top_keyword], cat=0, timeframe='now 7-d', geo=config.TRENDS_GEO)
+            related = pytrends.related_queries()
 
-        if related and top_keyword in related:
-            rising_df = related[top_keyword].get("rising")
-            if rising_df is not None and not rising_df.empty:
-                for _, row in rising_df.head(10).iterrows():
-                    query = row.get("query", "")
-                    value = row.get("value", 0)
+            if related and top_keyword in related:
+                rising_df = related[top_keyword].get("rising")
+                if rising_df is not None and not rising_df.empty:
+                    for _, row in rising_df.head(8).iterrows():
+                        query = str(row.get("query", "")).strip()
+                        value = row.get("value", 0)
+                        if not query:
+                            continue
 
-                    # Skip queries with excluded keywords (cricket, T20, etc.)
-                    query_lower = query.lower()
-                    excluded = False
-                    for ex_kw in getattr(config, "EXCLUDE_KEYWORDS", []):
-                        if ex_kw.lower() in query_lower:
-                            logger.debug(f"  ⏭️ Skipping excluded trend: '{query}' (matched: {ex_kw})")
-                            excluded = True
-                            break
-                    if excluded:
-                        continue
+                        query_lower = query.lower()
+                        if any(ex_kw.lower() in query_lower for ex_kw in getattr(config, "EXCLUDE_KEYWORDS", [])):
+                            continue
 
-                    trends.append({
-                        "keyword": query,
-                        "current_interest": int(value) if isinstance(value, (int, float)) else 0,
-                        "avg_interest": 0,
-                        "is_rising": True,
-                        "spike_ratio": 0,
-                        "source": "google_trends_related",
-                        "source_type": "trends",
-                        "recorded_at": datetime.utcnow(),
-                    })
-                    logger.info(f"  📈 Related rising query: '{query}' (value: {value})")
+                        trends.append({
+                            "keyword": query,
+                            "current_interest": int(value) if isinstance(value, (int, float)) else 0,
+                            "avg_interest": 0,
+                            "is_rising": True,
+                            "spike_ratio": 0,
+                            "velocity": 0,
+                            "source": "google_trends_related",
+                            "source_type": "trends",
+                            "recorded_at": datetime.utcnow(),
+                        })
+        except Exception as e:
+            logger.warning(f"Related queries error for {top_keyword}: {e}")
 
-    except Exception as e:
-        logger.warning(f"Related queries error: {e}")
-
-    logger.info(f"Trends Monitor: Found {len(trends)} trend data points, {sum(1 for t in trends if t['is_rising'])} rising")
+    logger.info(f"Trends Monitor: {len(trends)} trend points, {sum(1 for t in trends if t['is_rising'])} rising")
     return trends
 
 
 def get_realtime_trending():
-    """
-    Fetch real-time trending searches and filter for config keyword related topics.
-    Returns a list of trending search dicts.
-    """
     realtime_trends = []
 
     try:
         pytrends = TrendReq(hl='en-US', tz=0)
         trending = pytrends.trending_searches(pn='india')
+        watchlist = set(kw.lower() for kw in (get_trends_keywords(limit=140) + config.ALL_KEYWORDS))
 
         if trending is not None and not trending.empty:
             for _, row in trending.iterrows():
-                query = str(row[0])
-                # Check if this trending query is Agriculture related
-                for kw in config.ALL_KEYWORDS:
-                    if kw.lower() in query or any(word in query for word in kw.lower().split()):
-                        realtime_trends.append({
-                            "keyword": query,
-                            "source": "google_trending",
-                            "source_type": "realtime_trends",
-                            "is_rising": True,
-                            "matched_keyword": kw,
-                            "recorded_at": datetime.utcnow(),
-                        })
-                        logger.info(f"  ⚡ Real-time trending: '{row[0]}' (matched: {kw})")
+                query = str(row[0]).strip()
+                ql = query.lower()
+
+                if any(ex_kw.lower() in ql for ex_kw in getattr(config, "EXCLUDE_KEYWORDS", [])):
+                    continue
+
+                matched = None
+                for kw in watchlist:
+                    if kw in ql or any(part in ql for part in kw.split() if len(part) > 3):
+                        matched = kw
                         break
+
+                if matched:
+                    realtime_trends.append({
+                        "keyword": query,
+                        "source": "google_trending",
+                        "source_type": "realtime_trends",
+                        "is_rising": True,
+                        "matched_keyword": matched,
+                        "recorded_at": datetime.utcnow(),
+                    })
 
     except Exception as e:
         logger.warning(f"Real-time trending error: {e}")
 
     return realtime_trends
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
-    print("=== Interest Over Time ===")
-    trends = fetch_trending_queries()
-    for t in trends:
-        status = "🔥 RISING" if t["is_rising"] else "  normal"
-        print(f"  {status} | {t['keyword']}: {t['current_interest']} (avg: {t['avg_interest']}, ratio: {t['spike_ratio']}x)")
-
-    print("\n=== Real-time Trending ===")
-    rt = get_realtime_trending()
-    for r in rt:
-        print(f"  ⚡ {r['keyword']} (matched: {r.get('matched_keyword', 'N/A')})")

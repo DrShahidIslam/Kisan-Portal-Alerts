@@ -1,9 +1,10 @@
-"""
-SEO Prompt Template — Master prompt used for Gemini article generation.
+﻿"""
+SEO Prompt Template â€” Master prompt used for Gemini article generation.
 Enforces SEO best practices, your site's editorial style, Kadence block HTML, and internal linking.
 """
 import os
 import json
+from detection.scheme_registry import get_category_slug_for_text
 
 # Scheme category slugs matching kisanportal.org pillar URLs (for WordPress category assignment)
 SCHEME_CATEGORY_SLUGS = [
@@ -22,7 +23,7 @@ SCHEME_CATEGORY_SLUGS = [
 # For prompt: same list + "news" for unrelated topics
 CATEGORY_MAPPING = SCHEME_CATEGORY_SLUGS + ["news"]
 
-# Topic/keyword phrases → WordPress category slug. First match wins; otherwise "news".
+# Topic/keyword phrases â†’ WordPress category slug. First match wins; otherwise "news".
 # Order matters: more specific phrases should come before broad ones (e.g. "PM Kisan Tractor" before "PM Kisan").
 KEYWORDS_TO_CATEGORY = [
     # (list of phrases to match in topic title or matched_keyword, slug)
@@ -62,21 +63,22 @@ KEYWORDS_TO_CATEGORY = [
 
 
 def get_category_for_topic(topic_title, matched_keyword=""):
-    """
-    Return the WordPress category slug for this topic.
-    If the topic or matched_keyword matches one of the scheme categories, return that slug.
-    Otherwise return "news".
-    """
+    """Return WordPress category slug from master scheme registry; fallback to static mapping."""
     if not topic_title and not matched_keyword:
         return "news"
+
+    slug = get_category_slug_for_text(topic_title, matched_keyword)
+    if slug and slug != "news":
+        return slug
+
     combined = f" {((topic_title or '') + ' ' + (matched_keyword or '')).lower()} "
-    for phrases, slug in KEYWORDS_TO_CATEGORY:
+    for phrases, static_slug in KEYWORDS_TO_CATEGORY:
         for phrase in phrases:
             if phrase.lower() in combined:
-                return slug
+                return static_slug
     return "news"
 
-# Verified kisanportal.org POST URLs for internal linking (real published pages — no 404s).
+# Verified kisanportal.org POST URLs for internal linking (real published pages â€” no 404s).
 # Category slugs (SCHEME_CATEGORY_SLUGS) are used only for WordPress category assignment, not for links.
 BASE_URL = "https://kisanportal.org"
 
@@ -115,7 +117,7 @@ INTERNAL_LINKS = {
     "home": {"url": f"{BASE_URL}/", "anchor": "Kisan Portal Home"},
 }
 
-# File to store URLs of posts published by this agent — used as internal links in future articles.
+# File to store URLs of posts published by this agent â€” used as internal links in future articles.
 PUBLISHED_POSTS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "published_posts.json")
 
 
@@ -161,11 +163,8 @@ def get_internal_links_for_prompt():
         return list(INTERNAL_LINKS_PILLARS)
 
 
-def add_published_post(post_url, title, slug=""):
-    """
-    Register a newly published post so it can be used for internal linking in future articles.
-    Call this after successfully publishing to WordPress.
-    """
+def add_published_post(post_url, title, slug="", published_at=""):
+    """Register a newly published post for internal linking and freshness tracking."""
     if not post_url or not title:
         return
     post_url = (post_url or "").strip().rstrip("/")
@@ -176,18 +175,21 @@ def add_published_post(post_url, title, slug=""):
         if os.path.exists(PUBLISHED_POSTS_FILE):
             with open(PUBLISHED_POSTS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        # Avoid duplicate URL
         existing_urls = {e.get("url", "").rstrip("/") for e in data}
         if post_url.rstrip("/") in existing_urls:
             return
-        data.append({"url": post_url, "title": (title or "").strip()[:200], "slug": (slug or "").strip()[:100]})
+        data.append({
+            "url": post_url,
+            "title": (title or "").strip()[:200],
+            "slug": (slug or "").strip()[:100],
+            "published_at": (published_at or "")[:40],
+        })
         with open(PUBLISHED_POSTS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
 
-
-def build_article_prompt(topic_title, source_texts, matched_keyword=""):
+def build_article_prompt(topic_title, source_texts, matched_keyword="", target_lang="en"):
     """
     Build the master SEO prompt for Gemini article generation.
     """
@@ -201,34 +203,45 @@ def build_article_prompt(topic_title, source_texts, matched_keyword=""):
 
     # Build internal links list: agent-published posts first (best reference), then static pillars
     pillars_for_prompt = get_internal_links_for_prompt()
-    links_context = "INTERNAL LINKING (use only these exact URLs):\n"
+    links_context = "ALLOWED INTERNAL LINKS:\n"
     for p in pillars_for_prompt:
-        links_context += f"  - {p['topic']}\n"
-        links_context += f"    - URL: {p['url']}\n"
-        links_context += f"    - Anchors: {', '.join(p['anchors'])}\n"
+        links_context += f"  - Title: {p['topic']}\n"
+        links_context += f"    - EXACT URL TO USE: {p['url']}\n"
+        links_context += f"    - Allowed Anchors: {', '.join(p['anchors'])}\n"
     
     cat_mapping_str = ", ".join(CATEGORY_MAPPING)
+
+    lang_labels = {"en": "English", "hi": "Hindi", "te": "Telugu"}
+    target_lang = (target_lang or "en").lower()
+    if target_lang not in lang_labels:
+        target_lang = "en"
 
     prompt = f"""You are a world-class SEO strategist and Indian agriculture journalist for kisanportal.org.
 Your mission is to create a "Pillar Page" or highly-relevant "Cluster Article" that ranks for E-E-A-T and provides immense value to farmers.
 
 TASK: Write a complete, publish-ready guide about: {topic_title}
 PRIMARY KEYWORD: {matched_keyword or topic_title}
+TARGET LANGUAGE: {lang_labels[target_lang]} ({target_lang})
 
-─── SOURCE MATERIAL ───
+â”€â”€â”€ SOURCE MATERIAL â”€â”€â”€
 {sources_block}
 
-─── SEO & CONTENT STRATEGY ───
+â”€â”€â”€ SEO & CONTENT STRATEGY â”€â”€â”€
 
-**1. INTERNAL LINKING (FOOLPROOF — NO 404s):**
-- You MUST include exactly 2-3 internal links. Use ONLY the exact URLs in the list below.
-- Copy each URL character-for-character. Do NOT invent, modify, or guess any URL. Any link not from this list will cause a 404.
-- Use standard HTML: <a href="EXACT_URL">anchor text</a>. Anchor text can be from the "anchors" list or the topic name.
-- Available links (includes newly published articles and verified pages on kisanportal.org; prefer the most relevant):
-{links_context}
-- Every internal link href in your article MUST be exactly one of the URLs listed above. No exceptions.
+**1. INTERNAL LINKING (STRICT — ZERO HALLUCINATION):**
+- You MUST include exactly 2 to 3 internal links inside the body text.
+- Use ONLY the exact URLs from the "Allowed Internal Links" list below. Do NOT invent, guess, or modify any URL under any circumstances.
+- Using a URL not on this list is a FATAL ERROR and causes 404s. Just pick the closest match from the list.
+- Format: <a href="EXACT_URL_FROM_LIST">anchor text</a>.
+- {links_context}
+- Every single internal link href MUST exactly match and be copy-pasted from the list above. No exceptions.
 
-**2. NO SEARCH METRICS:**
+**2. LANGUAGE REQUIREMENT:**
+- The full article content must be in TARGET LANGUAGE only: {lang_labels[target_lang]} ({target_lang}).
+- Do not mix languages except official scheme names.
+- Set LANG field exactly to: {target_lang}.
+
+**3. NO SEARCH METRICS:**
 - ABSOLUTELY NO mentions of "Google Trends", "spike", "search volume", or "percentages".
 - This is a factual portal for farmers.
 
@@ -237,19 +250,19 @@ PRIMARY KEYWORD: {matched_keyword or topic_title}
 - Use * for bulleted lists.
 - Bold important agriculture terms using **term**.
 
-─── ARTICLE STRUCTURE ───
-CRITICAL: TITLE is your article H1. It must exactly match the main topic and appear as the primary headline. META_DESCRIPTION is used in search results — make it compelling (benefit, number, or year) so users click.
+â”€â”€â”€ ARTICLE STRUCTURE â”€â”€â”€
+CRITICAL: TITLE is your article H1. It must exactly match the main topic and appear as the primary headline. META_DESCRIPTION is used in search results â€” make it compelling (benefit, number, or year) so users click.
 
 1. TITLE: The article headline (and H1). Maximum 60 characters. Must be a true reflection of the main topic. Examples: "PM Kisan 15th Installment Date 2025" or "How to Check e-NAM Registration Status Online". No markdown or quotes.
-2. META_DESCRIPTION: Attractive one-line summary for Google (140–155 chars). Include a hook: key benefit, date, or number. Example: "PM Kisan 15th installment date announced for 2025. Check eligibility, status and payment schedule here."
-3. SLUG: 3–6 words, lowercase, hyphens only, max 50 chars. Example: pm-kisan-15th-installment-2025
+2. META_DESCRIPTION: Attractive one-line summary for Google (140â€“155 chars). Include a hook: key benefit, date, or number. Example: "PM Kisan 15th installment date announced for 2025. Check eligibility, status and payment schedule here."
+3. SLUG: 3â€“6 words, lowercase, hyphens only, max 50 chars. Example: pm-kisan-15th-installment-2025
 4. TAGS: Exactly 5 tags, comma-separated.
 5. CATEGORY: ONE slug from: {cat_mapping_str}. Use "news" only if topic does not match a scheme.
 6. LANG: The 2-letter ISO language code of this article's text ('en' for English, 'hi' for Hindi, 'te' for Telugu). Default is 'en'.
 7. ---CONTENT_START---
-   [Intro: 2–4 sentences]
+   [Intro: 2â€“4 sentences]
    
-   ## [H2 – must align with TITLE topic]
+   ## [H2 â€“ must align with TITLE topic]
    [Body with bullets where helpful]
    
    ## [Another H2]
@@ -265,19 +278,19 @@ CRITICAL: TITLE is your article H1. It must exactly match the main topic and app
    The Kisan Credit Card (KCC) scheme aims to provide adequate and timely credit support to farmers...
    
    ### Who is eligible for this scheme?
-   [2–4 sentence answer.]
+   [2â€“4 sentence answer.]
    
    ### What documents are required?
-   [2–4 sentence answer.]
+   [2â€“4 sentence answer.]
 8. ---CONTENT_END---
 9. ---FAQ_START---
-REQUIRED: Output the FAQPage JSON-LD schema. Use 3–4 REAL questions (each must end with ?). The "name" field = exact question text (same as the accordion pane "title" in step 7). The "text" field = full 2–4 sentence answer. Do NOT output placeholder text like "First real question" or "Full answer" — write the actual question and answer text.
+REQUIRED: Output the FAQPage JSON-LD schema. Use 3â€“4 REAL questions (each must end with ?). The "name" field = exact question text (same as the accordion pane "title" in step 7). The "text" field = full 2â€“4 sentence answer. Do NOT output placeholder text like "First real question" or "Full answer" â€” write the actual question and answer text.
 <script type="application/ld+json">
 {{
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    {{ "@type": "Question", "name": "What is [write actual question here]?", "acceptedAnswer": {{ "@type": "Answer", "text": "[Write 2–4 sentence answer here.]" }} }},
+    {{ "@type": "Question", "name": "What is [write actual question here]?", "acceptedAnswer": {{ "@type": "Answer", "text": "[Write 2â€“4 sentence answer here.]" }} }},
     {{ "@type": "Question", "name": "How do I [write actual question]?", "acceptedAnswer": {{ "@type": "Answer", "text": "[Write answer.]" }} }},
     {{ "@type": "Question", "name": "[Third actual question]?", "acceptedAnswer": {{ "@type": "Answer", "text": "[Write answer.]" }} }}
   ]
@@ -298,3 +311,9 @@ Style: High-quality stock photo, National Geographic style, no people in frame (
 Rules: No text, no logos, no watermarks, no cartoons. Landscape orientation, 16:9 suitable for featured image."""
 
     return prompt
+
+
+
+
+
+
