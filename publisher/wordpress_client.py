@@ -42,6 +42,65 @@ def _safe_json(response):
         return None
 
 
+def _coerce_int(value):
+    try:
+        if value is None or value == "":
+            return None
+        return int(value)
+    except Exception:
+        return None
+
+
+def _extract_id_from_location(response):
+    if response is None:
+        return None
+    location = response.headers.get("Location") or response.headers.get("Content-Location") or ""
+    match = re.search(r"/(\d+)(?:/)?$", location)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _extract_wp_entity_id(payload, response=None):
+    """
+    Extract a numeric WordPress entity ID from standard and mildly non-standard payloads.
+    """
+    if isinstance(payload, dict):
+        for key in ("id", "ID", "post_id", "media_id"):
+            entity_id = _coerce_int(payload.get(key))
+            if entity_id:
+                return entity_id
+
+        data = payload.get("data")
+        if isinstance(data, dict):
+            for key in ("id", "ID", "post_id", "media_id"):
+                entity_id = _coerce_int(data.get(key))
+                if entity_id:
+                    return entity_id
+
+    return _extract_id_from_location(response)
+
+
+def _resolve_post_id_from_slug(slug):
+    if not slug:
+        return None
+    try:
+        response = requests.get(
+            f"{API_BASE}/posts",
+            params={"slug": slug, "context": "edit", "per_page": 1},
+            auth=AUTH,
+            headers=HEADERS,
+            timeout=TIMEOUT,
+        )
+        if response.status_code == 200:
+            posts = _safe_json(response) or []
+            if posts:
+                return _extract_wp_entity_id(posts[0], response)
+    except Exception as e:
+        logger.warning(f"  Could not resolve post by slug '{slug}': {e}")
+    return None
+
+
 def create_post(article, featured_image_path=None, status=None):
     """
     Create a WordPress post from an article dict.
@@ -55,6 +114,7 @@ def create_post(article, featured_image_path=None, status=None):
     LAST_PUBLISH_ERROR = None
 
     if getattr(config, "WP_PUBLISH_WEBHOOK_URL", None) and getattr(config, "WP_PUBLISH_SECRET", None):
+        logger.info(f"Publishing to WordPress via webhook: '{article.get('title', 'Untitled')}'")
         out = _publish_via_webhook(article, featured_image_path, status)
         if out is None and LAST_PUBLISH_ERROR:
             logger.error(f"  Webhook: {LAST_PUBLISH_ERROR}")
@@ -107,8 +167,19 @@ def create_post(article, featured_image_path=None, status=None):
             )
             if response.status_code in (200, 201):
                 result = _safe_json(response) or {}
-                post_id = result.get("id")
+                post_id = _extract_wp_entity_id(result, response)
+                if not post_id:
+                    post_id = _resolve_post_id_from_slug(article.get("slug", ""))
                 post_url = result.get("link", "")
+                if not post_url and post_id:
+                    post_url = f"{config.WP_URL.rstrip('/')}/?p={post_id}"
+
+                if not post_id:
+                    body_preview = response.text[:500] if response.text else "empty response body"
+                    logger.error("  Post creation response did not include a usable post ID.")
+                    logger.error(f"     Response: {body_preview}")
+                    LAST_PUBLISH_ERROR = "Post created but ID missing in response"
+                    return None
 
                 logger.info(f"  Post created (ID: {post_id}, Status: {status})")
                 logger.info(f"  URL: {post_url}")
@@ -270,7 +341,14 @@ def upload_media(file_path, title=""):
                 timeout=60,
             )
             if response.status_code in (200, 201):
-                media_id = (_safe_json(response) or {}).get("id")
+                payload = _safe_json(response) or {}
+                media_id = _extract_wp_entity_id(payload, response)
+                if not media_id:
+                    body_preview = response.text[:300] if response.text else "empty response body"
+                    logger.error("  Media upload response did not include a usable media ID.")
+                    logger.error(f"     Response: {body_preview}")
+                    return None
+
                 logger.info(f"  Image uploaded (Media ID: {media_id})")
 
                 if title:
@@ -396,6 +474,10 @@ def _set_rankmath_meta(post_id, article):
     Set RankMath SEO metadata on a post.
     Uses PATCH so only meta is updated. Meta keys must be registered in WP.
     """
+    if not _coerce_int(post_id):
+        logger.warning("  Skipping RankMath update because post_id is missing.")
+        return
+
     focus_kw = article.get("matched_keyword", "") or article.get("focus_keyword", "")
     if not focus_kw and article.get("tags"):
         focus_kw = article["tags"][0]
@@ -559,3 +641,4 @@ if __name__ == "__main__":
         print("WordPress connection successful!")
     else:
         print("WordPress connection failed!")
+
