@@ -147,6 +147,61 @@ def send_article_preview(article_data):
 
     return _send_message(message, reply_markup=keyboard)
 
+def send_quality_gate_decision(article_data, quality, requested_status="draft"):
+    """Ask the user whether to continue with a quality-gate flagged article."""
+    title = article_data.get("title", "Untitled")
+    requested_status = (requested_status or "draft").lower()
+    issues = quality.get("issues", [])
+    warnings = quality.get("warnings", [])
+
+    lines = [
+        "QUALITY CHECK FLAGGED THIS ARTICLE",
+        "-" * 34,
+        "",
+        f"Title: {title}",
+        f"Requested action: {'Publish live' if requested_status == 'publish' else 'Save as draft'}",
+        f"Words: {quality.get('word_count', 0)}",
+        f"Internal links: {quality.get('internal_links', 0)}",
+        f"H2 sections: {quality.get('h2_count', 0)}",
+        "",
+        "Blocking issues:",
+    ]
+
+    if issues:
+        lines.extend(f"- {issue}" for issue in issues[:6])
+    else:
+        lines.append("- None")
+
+    if warnings:
+        lines.append("")
+        lines.append("Warnings:")
+        lines.extend(f"- {warning}" for warning in warnings[:4])
+
+    lines.extend([
+        "",
+        "Do you want to continue anyway, or reject this article?",
+    ])
+
+    message = "\n".join(lines)
+
+    if requested_status == "publish":
+        primary_button = {"text": "Continue Live", "callback_data": "quality_continue_publish"}
+        secondary_button = {"text": "Save as Draft", "callback_data": "quality_continue_draft"}
+    else:
+        primary_button = {"text": "Continue as Draft", "callback_data": "quality_continue_draft"}
+        secondary_button = {"text": "Publish Live Instead", "callback_data": "quality_continue_publish"}
+
+    keyboard = {
+        "inline_keyboard": [
+            [primary_button, secondary_button],
+            [
+                {"text": "Regenerate", "callback_data": "write_article"},
+                {"text": "Reject", "callback_data": "reject"},
+            ],
+        ]
+    }
+
+    return _send_message(message, reply_markup=keyboard)
 
 def send_publish_confirmation(post_url, post_title, post_id=None, status="publish"):
     """Send confirmation that an article was published or saved as draft."""

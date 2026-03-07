@@ -1,4 +1,4 @@
-﻿"""
+"""
 Kisan Portal Alerts Agent — Main Entry Point
 
 Orchestrates the detection → notification → writing → publishing pipeline.
@@ -32,6 +32,7 @@ from writer.quality_gate import validate_article_for_publish
 from notifications.telegram_bot import (
     send_trending_alert, send_simple_message, send_status_update,
     send_article_preview, send_publish_confirmation, send_generating_status,
+    send_quality_gate_decision,
     send_image_preview, get_updates, answer_callback_query, test_connection
 )
 from database.db import get_connection, cleanup_old_data, mark_notified, record_notification, save_topic_to_cache, get_topic_from_cache, mark_content_generated, mark_content_published
@@ -420,6 +421,12 @@ def check_and_handle_commands():
             elif data == "publish_live":
                 answer_callback_query(callback_id, "🚀 Publishing live...")
                 _handle_approve(status="publish")
+            elif data == "quality_continue_draft":
+                answer_callback_query(callback_id, "✅ Continuing as draft...")
+                _handle_approve(status="draft", bypass_quality_gate=True)
+            elif data == "quality_continue_publish":
+                answer_callback_query(callback_id, "🚀 Continuing despite quality warnings...")
+                _handle_approve(status="publish", bypass_quality_gate=True)
             elif data == "reject":
                 answer_callback_query(callback_id, "🗑️ Article discarded.")
                 _pending_article = None
@@ -647,7 +654,7 @@ def _handle_regenerate_image():
     _generate_and_preview_image(_pending_article.get("title", ""), _pending_article.get("source_url"))
 
 
-def _handle_approve(status="draft"):
+def _handle_approve(status="draft", bypass_quality_gate=False):
     """Publish the pending article to WordPress."""
     global _pending_article, _pending_image_path, _publish_in_progress
 
@@ -663,13 +670,9 @@ def _handle_approve(status="draft"):
     logger.info(f"📤 Publishing article: {_pending_article['title']} (status: {status})")
 
     quality = validate_article_for_publish(_pending_article, min_words=getattr(config, "ARTICLE_MIN_WORDS", 700))
-    if not quality["ok"]:
-        issues_text = "\n".join(f"- {i}" for i in quality["issues"][:6])
-        send_simple_message(
-            "Article failed quality gate and was not published.\n" + issues_text +
-            f"\n\nWords: {quality['word_count']}, Internal links: {quality['internal_links']}"
-        )
-        logger.warning(f"Quality gate blocked publish: {quality}")
+    if not quality["ok"] and not bypass_quality_gate:
+        send_quality_gate_decision(_pending_article, quality, requested_status=status)
+        logger.warning(f"Quality gate flagged article for manual decision: {quality}")
         _publish_in_progress = False
         return
 
@@ -945,4 +948,3 @@ if __name__ == "__main__":
         logger.info("Done.")
     else:
         run_agent_loop()
-
