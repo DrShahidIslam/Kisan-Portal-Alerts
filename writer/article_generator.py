@@ -121,6 +121,7 @@ def generate_article(topic, source_urls=None):
             source_texts=source_texts,
             matched_keyword=topic.get("matched_keyword", ""),
             target_lang=target_lang,
+            content_angle=topic.get("content_angle", ""),
         )
     except Exception as e:
         logger.error(f"  âŒ Failed to build prompt: {e}")
@@ -386,5 +387,6 @@ if __name__ == "__main__":
     if article:
         print(f"TITLE: {article['title']}")
         print(f"CONTENT PREVIEW: {article['full_content'][:500]}...")
+
 
 
