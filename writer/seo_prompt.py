@@ -1,4 +1,4 @@
-﻿"""
+"""
 SEO Prompt Template - Master prompt used for Gemini article generation.
 Enforces SEO best practices, your site's editorial style, Kadence block HTML, and internal linking.
 """
@@ -18,6 +18,11 @@ SCHEME_CATEGORY_SLUGS = [
     "ladli-behna-yojana", "kalia-yojana", "krishak-bandhu-scheme",
     "paramparagat-krishi-organic", "rashtriya-gokul-mission",
     "rajiv-gandhi-kisan-nyay", "meri-fasal-mera-byora",
+    "agricultural-infrastructure-fund", "fpo", "msp", "namo-drone-didi",
+    "national-bee-honey-mission", "natural-farming", "interest-subvention-scheme",
+    "shetkari-sanman-nidhi", "bhavantar-bhugtan-yojana", "mp-kisan-kalyan-yojana",
+    "mukhyamantri-krishi-ashirwad-yojana", "gujarat-kisan-sahay-yojana",
+    "karnataka-raitha-siri", "tamil-nadu-uzhavar-pathukappu",
 ]
 CATEGORY_MAPPING = SCHEME_CATEGORY_SLUGS + ["news"]
 
@@ -46,13 +51,27 @@ KEYWORDS_TO_CATEGORY = [
     (["smam", "farm machinery subsidy", "custom hiring", "agricultural mechanization"], "smam-mechanization"),
     (["national bamboo mission", "bamboo plantation", "nbm"], "national-bamboo-mission"),
     (["nfsm", "national food security mission", "food security"], "nfsm-food-security"),
+    (["agricultural infrastructure fund", "aif", "cold storage subsidy", "warehouse subsidy"], "agricultural-infrastructure-fund"),
+    (["fpo", "farmer producer organisation", "farmer producer organization"], "fpo"),
+    (["msp", "minimum support price", "procurement price", "wheat procurement", "paddy procurement"], "msp"),
+    (["namo drone didi", "drone didi", "drone subsidy"], "namo-drone-didi"),
     (["ladli behna", "ladli bahan"], "ladli-behna-yojana"),
     (["kalia yojana", "kalia odisha"], "kalia-yojana"),
     (["krishak bandhu", "krishak bandhu west bengal"], "krishak-bandhu-scheme"),
     (["paramparagat krishi", "pkvy", "organic farming mission"], "paramparagat-krishi-organic"),
+    (["natural farming", "zero budget natural farming", "zbnf"], "natural-farming"),
+    (["interest subvention", "crop loan interest subvention"], "interest-subvention-scheme"),
+    (["national bee honey mission", "beekeeping subsidy", "bee keeping"], "national-bee-honey-mission"),
     (["rashtriya gokul mission", "gokul mission", "cattle breeding"], "rashtriya-gokul-mission"),
     (["rajiv gandhi kisan nyay", "kisan nyay chhattisgarh"], "rajiv-gandhi-kisan-nyay"),
     (["meri fasal mera byora", "haryana farmer registration"], "meri-fasal-mera-byora"),
+    (["shetkari sanman nidhi", "maharashtra kisan samman nidhi"], "shetkari-sanman-nidhi"),
+    (["bhavantar bhugtan", "bhavantar bhugpaye", "price deficiency payment"], "bhavantar-bhugtan-yojana"),
+    (["mp kisan kalyan", "mukhyamantri kisan kalyan"], "mp-kisan-kalyan-yojana"),
+    (["krishi ashirwad", "mukhyamantri krishi ashirwad"], "mukhyamantri-krishi-ashirwad-yojana"),
+    (["kisan sahay gujarat", "gujarat kisan sahay"], "gujarat-kisan-sahay-yojana"),
+    (["karnataka raitha siri", "raitha siri"], "karnataka-raitha-siri"),
+    (["tamil nadu uzhavar", "uzhavar pathukappu"], "tamil-nadu-uzhavar-pathukappu"),
 ]
 
 

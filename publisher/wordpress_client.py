@@ -1,4 +1,4 @@
-﻿"""
+"""
 WordPress Client - Handles all WordPress REST API interactions:
 creating posts, uploading media, setting categories/tags,
 and injecting RankMath SEO fields.
@@ -40,6 +40,33 @@ def _safe_json(response):
         return response.json()
     except Exception:
         return None
+
+
+def _extract_json_object(text):
+    """Recover a JSON object from a response body that also contains notices or HTML."""
+    if not text:
+        return None
+
+    import json
+
+    decoder = json.JSONDecoder()
+    for idx, ch in enumerate(text):
+        if ch != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(text[idx:])
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
+def _safe_json_loose(response):
+    data = _safe_json(response)
+    if data is not None:
+        return data
+    return _extract_json_object(getattr(response, "text", "") or "")
 
 
 def _coerce_int(value):
@@ -166,7 +193,7 @@ def create_post(article, featured_image_path=None, status=None):
                 timeout=TIMEOUT,
             )
             if response.status_code in (200, 201):
-                result = _safe_json(response) or {}
+                result = _safe_json_loose(response) or {}
                 post_id = _extract_wp_entity_id(result, response)
                 if not post_id:
                     post_id = _resolve_post_id_from_slug(article.get("slug", ""))
@@ -278,7 +305,7 @@ def _publish_via_webhook(article, featured_image_path=None, status=None):
         try:
             response = requests.post(url, json=payload, headers=headers, timeout=60)
             if response.status_code == 200:
-                data = _safe_json(response)
+                data = _safe_json_loose(response)
                 if data and data.get("success"):
                     logger.info(f"  Post created via webhook (ID: {data.get('post_id')}, URL: {data.get('post_url', '')})")
                     return {
@@ -290,6 +317,14 @@ def _publish_via_webhook(article, featured_image_path=None, status=None):
                     logger.error(f"  Webhook returned success=false: {data.get('message', '')}")
                     LAST_PUBLISH_ERROR = data.get("message", "success=false")
                 else:
+                    recovered_id = _extract_wp_entity_id({}, response)
+                    if recovered_id:
+                        logger.warning("  Webhook response was not clean JSON, but a post ID was recovered from headers.")
+                        return {
+                            "post_id": recovered_id,
+                            "post_url": f"{config.WP_URL.rstrip('/')}/?p={recovered_id}",
+                            "status": status,
+                        }
                     logger.error(f"  Webhook returned non-JSON success response: {response.text[:200]}")
                     LAST_PUBLISH_ERROR = "Webhook returned non-JSON response"
                 return None
@@ -341,7 +376,7 @@ def upload_media(file_path, title=""):
                 timeout=60,
             )
             if response.status_code in (200, 201):
-                payload = _safe_json(response) or {}
+                payload = _safe_json_loose(response) or {}
                 media_id = _extract_wp_entity_id(payload, response)
                 if not media_id:
                     body_preview = response.text[:300] if response.text else "empty response body"
@@ -532,7 +567,7 @@ def update_post_status(post_id, status="publish"):
             timeout=TIMEOUT,
         )
         if response.status_code == 200:
-            post_data = _safe_json(response) or {}
+            post_data = _safe_json_loose(response) or {}
             link = post_data.get("link")
 
             if status == "publish":

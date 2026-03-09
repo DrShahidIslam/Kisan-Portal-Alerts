@@ -19,6 +19,10 @@
  * Security: only requests with the correct X-Kisan-Agent-Token are accepted.
  */
 
+if (!defined('WP_USE_THEMES')) {
+    define('WP_USE_THEMES', false);
+}
+ob_start();
 header('Content-Type: application/json');
 
 if (!empty($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -45,6 +49,10 @@ if (!is_file($wp_load)) {
     exit;
 }
 require_once $wp_load;
+$bootstrap_noise = ob_get_clean();
+if (!is_string($bootstrap_noise)) {
+    $bootstrap_noise = '';
+}
 
 $webhook_author_id = 1;
 if (defined('KISAN_AGENT_WEBHOOK_USER_ID')) {
@@ -98,13 +106,18 @@ $faq_schema = isset($data['faq_schema']) ? $data['faq_schema'] : '';
 $lang = isset($data['lang']) ? sanitize_key($data['lang']) : '';
 
 $cat_id = 0;
-$terms = get_terms(['taxonomy' => 'category', 'name' => $category, 'hide_empty' => false]);
-if (!empty($terms)) {
-    $cat_id = (int) $terms[0]->term_id;
+$term = get_term_by('slug', sanitize_title($category), 'category');
+if (!$term) {
+    $term = get_term_by('name', $category, 'category');
+}
+if ($term && !is_wp_error($term)) {
+    $cat_id = (int) $term->term_id;
 } else {
-    $created = wp_insert_term($category, 'category');
+    $created = wp_insert_term($category, 'category', ['slug' => sanitize_title($category)]);
     if (!is_wp_error($created)) {
         $cat_id = (int) $created['term_id'];
+    } elseif ($created instanceof WP_Error && $created->get_error_code() === 'term_exists') {
+        $cat_id = (int) $created->get_error_data();
     }
 }
 
@@ -198,6 +211,9 @@ if ($lang !== '') {
 }
 
 $post_url = get_permalink($post_id);
+if (ob_get_level() > 0) {
+    ob_clean();
+}
 echo json_encode([
     'success' => true,
     'post_id' => (int) $post_id,

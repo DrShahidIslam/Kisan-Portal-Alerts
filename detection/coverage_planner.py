@@ -1,4 +1,4 @@
-﻿"""
+"""
 Coverage planner for guaranteed scheme-angle coverage and missed-topic recovery.
 """
 from datetime import datetime, timedelta
@@ -94,13 +94,31 @@ def build_coverage_topics(conn, max_items=6, recent_topics=None):
     rows.sort(key=lambda x: x["score"], reverse=True)
 
     planned = []
+    used_scheme_ids = set()
+
+    def try_append(row, enforce_scheme_diversity):
+        topic = build_angle_topic(row["scheme"], row["angle"])
+        if topic.lower() in recent_set:
+            return False
+        scheme_id = row["scheme"]["id"]
+        if enforce_scheme_diversity and scheme_id in used_scheme_ids:
+            return False
+        planned.append(_build_topic_row(row["scheme"], row["angle"], row["score"], row["reason"]))
+        used_scheme_ids.add(scheme_id)
+        return True
+
+    # First pass: maximize scheme diversity so one scheme does not dominate a cycle.
     for row in rows:
         if len(planned) >= max_items:
             break
-        topic = build_angle_topic(row["scheme"], row["angle"])
-        if topic.lower() in recent_set:
-            continue
-        planned.append(_build_topic_row(row["scheme"], row["angle"], row["score"], row["reason"]))
+        try_append(row, enforce_scheme_diversity=True)
+
+    # Second pass: fill any remaining slots with the next-best stale angles.
+    if len(planned) < max_items:
+        for row in rows:
+            if len(planned) >= max_items:
+                break
+            try_append(row, enforce_scheme_diversity=False)
 
     return planned
 

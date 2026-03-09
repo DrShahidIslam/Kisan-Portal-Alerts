@@ -1,4 +1,4 @@
-﻿"""
+"""
 Master registry for India agriculture schemes and reusable coverage logic.
 """
 from datetime import datetime
@@ -37,6 +37,22 @@ SCHEME_REGISTRY = [
      "category_slug": "nfsm-food-security", "aliases": ["national food security mission"]},
     {"id": "pm_maandhan", "name": "PM Kisan Maandhan", "level": "central", "state": "", "priority": 6,
      "category_slug": "pm-kisan-maandhan", "aliases": ["farmer pension"]},
+    {"id": "aif", "name": "Agricultural Infrastructure Fund", "level": "central", "state": "", "priority": 6,
+     "category_slug": "agricultural-infrastructure-fund", "aliases": ["aif", "agri infrastructure fund", "warehouse subsidy", "cold storage subsidy"]},
+    {"id": "fpo", "name": "FPO", "level": "central", "state": "", "priority": 6,
+     "category_slug": "fpo", "aliases": ["farmer producer organisation", "farmer producer organization"]},
+    {"id": "msp", "name": "MSP", "level": "central", "state": "", "priority": 7,
+     "category_slug": "msp", "aliases": ["minimum support price", "procurement price", "wheat procurement", "paddy procurement"]},
+    {"id": "drone_didi", "name": "Namo Drone Didi", "level": "central", "state": "", "priority": 5,
+     "category_slug": "namo-drone-didi", "aliases": ["drone didi", "drone subsidy"]},
+    {"id": "gokul", "name": "Rashtriya Gokul Mission", "level": "central", "state": "", "priority": 5,
+     "category_slug": "rashtriya-gokul-mission", "aliases": ["gokul mission", "cattle breeding mission"]},
+    {"id": "bee_honey", "name": "National Bee Honey Mission", "level": "central", "state": "", "priority": 5,
+     "category_slug": "national-bee-honey-mission", "aliases": ["beekeeping subsidy", "bee keeping", "honey mission"]},
+    {"id": "natural_farming", "name": "Natural Farming", "level": "central", "state": "", "priority": 5,
+     "category_slug": "natural-farming", "aliases": ["zero budget natural farming", "zbnf"]},
+    {"id": "interest_subvention", "name": "Interest Subvention Scheme", "level": "central", "state": "", "priority": 5,
+     "category_slug": "interest-subvention-scheme", "aliases": ["crop loan interest subvention", "interest subsidy farm loan"]},
     {"id": "rythu_bharosa", "name": "Rythu Bharosa", "level": "state", "state": "Andhra Pradesh", "priority": 8,
      "category_slug": "rythu-bharosa", "aliases": ["rythu bandhu", "ysr rythu bharosa"]},
     {"id": "e_panta", "name": "e-Panta", "level": "state", "state": "Andhra Pradesh", "priority": 8,
@@ -65,6 +81,20 @@ SCHEME_REGISTRY = [
      "category_slug": "pm-dhan-dhaanya-krishi-yojana", "aliases": ["pmddky"]},
     {"id": "paramparagat", "name": "Paramparagat Krishi Vikas Yojana", "level": "central", "state": "", "priority": 5,
      "category_slug": "paramparagat-krishi-organic", "aliases": ["pkvy", "organic farming mission"]},
+    {"id": "shetkari_sanman", "name": "Shetkari Sanman Nidhi", "level": "state", "state": "Maharashtra", "priority": 5,
+     "category_slug": "shetkari-sanman-nidhi", "aliases": ["maharashtra kisan samman nidhi"]},
+    {"id": "bhavantar", "name": "Bhavantar Bhugtan Yojana", "level": "state", "state": "Madhya Pradesh", "priority": 5,
+     "category_slug": "bhavantar-bhugtan-yojana", "aliases": ["bhavantar bhugpaye", "price deficiency payment"]},
+    {"id": "mp_kisan_kalyan", "name": "MP Mukhyamantri Kisan Kalyan Yojana", "level": "state", "state": "Madhya Pradesh", "priority": 5,
+     "category_slug": "mp-kisan-kalyan-yojana", "aliases": ["mukhyamantri kisan kalyan yojana", "mp kisan kalyan"]},
+    {"id": "krishi_ashirwad", "name": "Mukhyamantri Krishi Ashirwad Yojana", "level": "state", "state": "Jharkhand", "priority": 5,
+     "category_slug": "mukhyamantri-krishi-ashirwad-yojana", "aliases": ["krishi ashirwad yojana", "jharkhand kisan scheme"]},
+    {"id": "kisan_sahay_gujarat", "name": "Gujarat Kisan Sahay Yojana", "level": "state", "state": "Gujarat", "priority": 5,
+     "category_slug": "gujarat-kisan-sahay-yojana", "aliases": ["kisan sahay gujarat", "gujarat crop damage compensation"]},
+    {"id": "raitha_siri", "name": "Karnataka Raitha Siri", "level": "state", "state": "Karnataka", "priority": 4,
+     "category_slug": "karnataka-raitha-siri", "aliases": ["raitha siri"]},
+    {"id": "uzhavar", "name": "Tamil Nadu Uzhavar Pathukappu", "level": "state", "state": "Tamil Nadu", "priority": 4,
+     "category_slug": "tamil-nadu-uzhavar-pathukappu", "aliases": ["tamil nadu uzhavar", "uzhavar pathukappu"]},
 ]
 
 DEFAULT_ANGLES = [
