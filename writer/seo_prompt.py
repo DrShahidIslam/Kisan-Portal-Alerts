@@ -280,6 +280,18 @@ LANGUAGE-SPECIFIC SEO RULES: TELUGU
     }
     return rules.get(target_lang, rules["en"]).strip()
 
+def build_image_alt_text(topic_title, focus_keyword="", category=""):
+    """Create descriptive, keyword-aware alt text for the featured image."""
+    topic_title = (topic_title or "").strip()
+    focus_keyword = (focus_keyword or "").strip()
+    category = (category or "").strip().lower()
+
+    if focus_keyword and (category in SCHEME_CATEGORY_SLUGS or category != "news"):
+        return f"Indian farmer guide image for {focus_keyword}"
+    if topic_title:
+        return f"Featured image for {topic_title}"
+    return "Indian agriculture featured image"
+
 
 def build_article_prompt(topic_title, source_texts, matched_keyword="", target_lang="en", content_angle=""):
     """Build the master SEO prompt for Gemini article generation."""
@@ -339,10 +351,12 @@ SEO / AEO / GEO STRATEGY
 3. SEO REQUIREMENTS
 - PRIMARY KEYWORD / FOCUS KEYWORD is: "{primary_keyword}".
 - The TITLE must contain the PRIMARY KEYWORD exactly or the closest exact scheme phrase.
+- The SEO_TITLE should be optimized for click-through rate and may be slightly different from the TITLE, but it must still lead with the PRIMARY KEYWORD or closest exact phrase.
 - The META_DESCRIPTION must contain the PRIMARY KEYWORD naturally and include a strong click hook such as latest update, status, installment, last date, amount, eligibility, apply process, documents, or payment update.
 - The first 120 words must include the PRIMARY KEYWORD naturally.
 - The first paragraph must hook the reader by explaining what changed, why it matters now, and what the farmer should do next.
 - Use the PRIMARY KEYWORD naturally in at least one H2 and in the closing guidance.
+- Use 2 to 4 related secondary phrases naturally in the article, such as status check, eligibility, documents required, apply online, payment status, installment date, beneficiary list, or claim status.
 - Keep the article tightly focused on the PRIMARY KEYWORD. Do not drift into broad agriculture commentary.
 
 4. AEO / GEO REQUIREMENTS
@@ -351,6 +365,7 @@ SEO / AEO / GEO STRATEGY
 - Add question-based subheadings where useful, such as eligibility, status check, installment date, eKYC, documents, amount, or how to apply.
 - Use short paragraphs, bullets, and step-based explanations so the article is easy to scan.
 - If the topic is a fresh update, clearly mark what is new and what remains unchanged.
+- If this is a news-led topic, include one short original analysis paragraph under a heading like "What this means for farmers" or "Kisan Portal analysis". This paragraph must add value through practical interpretation, not unsupported opinion.
 - The article structure must match the selected content template.
 - {template_rules}
 
@@ -373,19 +388,23 @@ CRITICAL: The intro must say what changed, who is affected, and what action the 
 CRITICAL: The article must feel helpful for search users first, then strong enough for AI summaries.
 
 1. TITLE: Maximum 60 characters. Must contain the PRIMARY KEYWORD. No markdown or quotes.
-2. META_DESCRIPTION: 140 to 155 characters. Must contain the PRIMARY KEYWORD naturally and a strong hook.
-3. SLUG: 3 to 6 words, lowercase, hyphens only, max 50 chars.
-4. TAGS: Exactly 5 tags, comma-separated.
-5. CATEGORY: ONE slug from: {cat_mapping_str}. Use "news" only if topic does not match a scheme.
-6. LANG: The 2-letter ISO language code of this article's text. Use exactly {target_lang}.
-7. ---CONTENT_START---
+2. SEO_TITLE: 50 to 65 characters. Must begin with the PRIMARY KEYWORD or closest exact phrase. Make it more search-CTR focused than TITLE when useful.
+3. META_DESCRIPTION: 140 to 155 characters. Must contain the PRIMARY KEYWORD naturally and a strong hook.
+4. FOCUS_KEYWORD: A single best long-tail keyword phrase for this article, not a broad word like "agriculture".
+5. IMAGE_ALT: 8 to 16 words describing the featured image naturally with the PRIMARY KEYWORD or closest phrase.
+6. SLUG: 3 to 6 words, lowercase, hyphens only, max 50 chars.
+7. TAGS: Exactly 5 tags, comma-separated.
+8. CATEGORY: ONE slug from: {cat_mapping_str}. Use "news" only if topic does not match a scheme.
+9. LANG: The 2-letter ISO language code of this article's text. Use exactly {target_lang}.
+10. ---CONTENT_START---
 - Start with a short direct-answer intro of 2 to 4 sentences.
 - Follow with well-structured H2/H3 sections that match the selected template.
 - Add at least 2 bullet lists where useful.
+- If the topic is news-driven, include one short "What this means for farmers" or "Kisan Portal analysis" section with practical interpretation.
 - Include a short FAQ section at the end with 4 to 6 real questions farmers may ask.
 - Keep the tone practical, trustworthy, and easy to understand.
-8. ---CONTENT_END---
-9. ---FAQ_START---
+11. ---CONTENT_END---
+12. ---FAQ_START---
 REQUIRED: Output FAQPage JSON-LD schema with 3 to 4 real questions and real answers.
 <script type="application/ld+json">
 {{
@@ -398,11 +417,14 @@ REQUIRED: Output FAQPage JSON-LD schema with 3 to 4 real questions and real answ
   ]
 }}
 </script>
-10. ---FAQ_END---
+13. ---FAQ_END---
 
 Return ONLY this exact structure:
 TITLE: ...
+SEO_TITLE: ...
 META_DESCRIPTION: ...
+FOCUS_KEYWORD: ...
+IMAGE_ALT: ...
 SLUG: ...
 TAGS: tag1, tag2, tag3, tag4, tag5
 CATEGORY: ...
@@ -424,5 +446,6 @@ Style: High-quality stock photo, National Geographic style, no people in frame (
 Rules: No text, no logos, no watermarks, no cartoons. Landscape orientation, 16:9 suitable for featured image."""
 
     return prompt
+
 
 

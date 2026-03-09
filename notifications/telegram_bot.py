@@ -1,5 +1,5 @@
-"""
-Telegram Bot — Sends formatted notifications with interactive buttons.
+﻿"""
+Telegram Bot â€” Sends formatted notifications with interactive buttons.
 Handles both sending alerts and receiving commands (/write_article, /ignore).
 """
 import logging
@@ -37,37 +37,37 @@ def send_trending_alert(topic):
 
     # Score to emoji
     if score >= 80:
-        fire = "🔥🔥🔥"
+        fire = "ðŸ”¥ðŸ”¥ðŸ”¥"
     elif score >= 50:
-        fire = "🔥🔥"
+        fire = "ðŸ”¥ðŸ”¥"
     else:
-        fire = "🔥"
+        fire = "ðŸ”¥"
 
     lines = [
         f"{fire} TRENDING: {topic['topic']}",
-        "━" * 30,
-        f"📊 Score: {score} | {story_count} source{'s' if story_count > 1 else ''}",
-        f"📰 Sources: {', '.join(sources[:5])}",
-        f"🏷️ Keyword: {topic.get('matched_keyword', 'N/A')}",
+        "â”" * 30,
+        f"ðŸ“Š Score: {score} | {story_count} source{'s' if story_count > 1 else ''}",
+        f"ðŸ“° Sources: {', '.join(sources[:5])}",
+        f"ðŸ·ï¸ Keyword: {topic.get('matched_keyword', 'N/A')}",
         "",
-        "📝 Why it's trending:",
+        "ðŸ“ Why it's trending:",
     ]
 
     for f in factors[:5]:
-        lines.append(f"  • {f}")
+        lines.append(f"  â€¢ {f}")
 
     if top_url:
-        lines.append(f"\n🔗 Source: {top_url}")
+        lines.append(f"\nðŸ”— Source: {top_url}")
 
     # Add story summaries
     stories = topic.get("stories", [])
     if stories:
-        lines.append("\n📰 Coverage:")
+        lines.append("\nðŸ“° Coverage:")
         for s in stories[:3]:
             source_name = s.get("source", "Unknown")
             title = s.get("title", "")[:80]
             url = s.get("url", "")
-            lines.append(f"  • [{source_name}] {title}")
+            lines.append(f"  â€¢ [{source_name}] {title}")
             if url:
                 lines.append(f"    {url}")
 
@@ -84,8 +84,8 @@ def send_trending_alert(topic):
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "✍️ Generate Article", "callback_data": cb_data},
-                {"text": "🚫 Ignore", "callback_data": "ignore"},
+                {"text": "âœï¸ Generate Article", "callback_data": cb_data},
+                {"text": "ðŸš« Ignore", "callback_data": "ignore"},
             ]
         ]
     }
@@ -99,51 +99,81 @@ def send_simple_message(text):
 
 def send_status_update(status_text):
     """Send a status update about the agent's activity."""
-    message = f"🤖 Agent Status\n{'━' * 20}\n{status_text}"
+    message = f"ðŸ¤– Agent Status\n{'â”' * 20}\n{status_text}"
     return _send_message(message)
 
 
-def send_article_preview(article_data):
-    """
-    Send an article preview for human review.
-
-    Args:
-        article_data: dict with title, meta_description, content (first 500 chars), slug
-    """
+def send_article_preview(article_data, quality=None):
+    """Send an article preview for human review, including quality findings when available."""
     title = article_data.get("title", "Untitled")
     meta = article_data.get("meta_description", "")
     slug = article_data.get("slug", "")
     word_count = article_data.get("word_count", 0)
     content_preview = article_data.get("content", "")[:800]
+    quality = quality or {}
+    issues = quality.get("issues", [])
+    warnings = quality.get("warnings", [])
+    has_findings = bool(issues or warnings)
 
     lines = [
-        "📝 ARTICLE READY FOR REVIEW",
-        "━" * 30,
+        "ARTICLE READY FOR REVIEW",
+        "-" * 30,
         "",
         f"Title: {title}",
         f"Slug: /{slug}",
         f"Meta: {meta}",
         f"Words: {word_count}",
+    ]
+
+    if quality:
+        lines.extend([
+            f"Focus keyword: {quality.get('focus_keyword', article_data.get('focus_keyword', ''))}",
+            f"Internal links: {quality.get('internal_links', 0)} | H2s: {quality.get('h2_count', 0)}",
+        ])
+        if quality.get("keyword_density") is not None:
+            lines.append(f"Keyword density: {quality.get('keyword_density', 0)}%")
+
+    if has_findings:
+        lines.extend(["", "Weaknesses:"])
+        if issues:
+            lines.extend(f"- {issue}" for issue in issues[:5])
+        if warnings:
+            lines.extend(f"- {warning}" for warning in warnings[:4])
+
+    lines.extend([
         "",
         "Preview:",
         f"{content_preview}...",
-    ]
+    ])
 
     message = "\n".join(lines)
 
-    # Inline buttons for approve/reject
-    keyboard = {
-        "inline_keyboard": [
-            [
-                {"text": "✅ Save Draft Only (in next job)", "callback_data": "approve"},
-                {"text": "🚀 Publish Live (in next job)", "callback_data": "publish_live"},
-            ],
-            [
-                {"text": "🔄 Regenerate (in next job)", "callback_data": "write_article"},
-                {"text": "🗑️ Reject", "callback_data": "reject"},
-            ],
-        ]
-    }
+    if has_findings:
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "Continue Draft", "callback_data": "quality_continue_draft"},
+                    {"text": "Continue Live", "callback_data": "quality_continue_publish"},
+                ],
+                [
+                    {"text": "Regenerate", "callback_data": "write_article"},
+                    {"text": "Reject", "callback_data": "reject"},
+                ],
+            ]
+        }
+    else:
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "Save Draft Only", "callback_data": "approve"},
+                    {"text": "Publish Live", "callback_data": "publish_live"},
+                ],
+                [
+                    {"text": "Regenerate", "callback_data": "write_article"},
+                    {"text": "Reject", "callback_data": "reject"},
+                ],
+            ]
+        }
 
     return _send_message(message, reply_markup=keyboard)
 
@@ -206,17 +236,17 @@ def send_quality_gate_decision(article_data, quality, requested_status="draft"):
 def send_publish_confirmation(post_url, post_title, post_id=None, status="publish"):
     """Send confirmation that an article was published or saved as draft."""
     if status.lower() == "draft":
-        status_text = "✅ SAVED AS DRAFT"
+        status_text = "âœ… SAVED AS DRAFT"
         bottom_text = "The post is saved as a draft on your site\\."
     else:
-        status_text = "🚀 PUBLISHED LIVE"
+        status_text = "ðŸš€ PUBLISHED LIVE"
         bottom_text = "The post is now live on your site\\."
 
     message = f"""{status_text}
-{'━' * 30}
+{'â”' * 30}
 
-📄 *Title:* {_escape_md(post_title)}
-🔗 [View Post]({post_url})
+ðŸ“„ *Title:* {_escape_md(post_title)}
+ðŸ”— [View Post]({post_url})
 
 {bottom_text}"""
 
@@ -226,7 +256,7 @@ def send_publish_confirmation(post_url, post_title, post_id=None, status="publis
         keyboard = {
             "inline_keyboard": [
                 [
-                    {"text": "🚀 Publish Live Now", "callback_data": f"publish_draft_{post_id}"}
+                    {"text": "ðŸš€ Publish Live Now", "callback_data": f"publish_draft_{post_id}"}
                 ]
             ]
         }
@@ -237,8 +267,8 @@ def send_publish_confirmation(post_url, post_title, post_id=None, status="publis
 def _format_factors(factors):
     """Format spike factors into a bulleted list."""
     if not factors:
-        return "• General coverage increase"
-    return "\n".join(f"• {_escape_md(f)}" for f in factors[:5])
+        return "â€¢ General coverage increase"
+    return "\n".join(f"â€¢ {_escape_md(f)}" for f in factors[:5])
 
 
 def _escape_md(text):
@@ -253,7 +283,7 @@ def _escape_md(text):
 
 def send_generating_status(topic_title):
     """Send a status message that an article is being generated."""
-    message = f"📝 Generating article for:\n{topic_title}\n\nThis may take 1-2 minutes..."
+    message = f"ðŸ“ Generating article for:\n{topic_title}\n\nThis may take 1-2 minutes..."
     return _send_message(message)
 
 
@@ -263,17 +293,17 @@ def send_generation_confirmation(topic):
     story_hash = topic.get("story_hash", "none")
 
     text = (
-        f"❓ *Confirm Article Generation*\n\n"
+        f"â“ *Confirm Article Generation*\n\n"
         f"Do you want to generate a full article for:\n"
-        f"👉 *{title}*?\n\n"
+        f"ðŸ‘‰ *{title}*?\n\n"
         f"This will use Gemini API and may take a moment."
     )
 
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "✅ Yes, Generate", "callback_data": f"confirm_write_{story_hash}"},
-                {"text": "❌ Cancel", "callback_data": "cancel_write"},
+                {"text": "âœ… Yes, Generate", "callback_data": f"confirm_write_{story_hash}"},
+                {"text": "âŒ Cancel", "callback_data": "cancel_write"},
             ]
         ]
     }
@@ -301,16 +331,16 @@ def send_image_preview(image_path, article_title):
     if not chat_id:
         return None
 
-    caption = f"🖼️ Featured Image Preview\n━━━━━━━━━━━━━━━━━━━━\n{article_title}"
+    caption = f"ðŸ–¼ï¸ Featured Image Preview\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n{article_title}"
 
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "✅ Use Image (in next job)", "callback_data": "approve_image"},
-                {"text": "🔄 Regenerate Image (in next job)", "callback_data": "regenerate_image"},
+                {"text": "âœ… Use Image (in next job)", "callback_data": "approve_image"},
+                {"text": "ðŸ”„ Regenerate Image (in next job)", "callback_data": "regenerate_image"},
             ],
             [
-                {"text": "🚫 Skip Image", "callback_data": "skip_image"},
+                {"text": "ðŸš« Skip Image", "callback_data": "skip_image"},
             ],
         ]
     }
@@ -343,12 +373,12 @@ def _send_message(text, parse_mode=None, reply_markup=None):
     """Send a message via Telegram Bot API."""
     base_url = _get_base_url()
     if not base_url:
-        print("TELEGRAM ERROR: Cannot send message — bot token not configured")
+        print("TELEGRAM ERROR: Cannot send message â€” bot token not configured")
         return None
 
     chat_id = config.TELEGRAM_CHAT_ID
     if not chat_id:
-        print("TELEGRAM ERROR: Cannot send message — chat ID not configured")
+        print("TELEGRAM ERROR: Cannot send message â€” chat ID not configured")
         return None
 
     payload = {
@@ -465,13 +495,15 @@ if __name__ == "__main__":
     # Test connection
     ok, name = test_connection()
     if ok:
-        print(f"✅ Bot connected: @{name}")
+        print(f"âœ… Bot connected: @{name}")
 
         # Send a test message
-        mid = send_simple_message(f"🧪 Connection test successful! @{name} is ready for Kisan Portal.")
+        mid = send_simple_message(f"ðŸ§ª Connection test successful! @{name} is ready for Kisan Portal.")
         if mid:
-            print(f"✅ Test message sent (ID: {mid})")
+            print(f"âœ… Test message sent (ID: {mid})")
         else:
-            print("❌ Failed to send test message")
+            print("âŒ Failed to send test message")
     else:
-        print("❌ Bot connection failed. Check your TELEGRAM_BOT_TOKEN.")
+        print("âŒ Bot connection failed. Check your TELEGRAM_BOT_TOKEN.")
+
+

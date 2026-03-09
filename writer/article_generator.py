@@ -1,32 +1,53 @@
 ﻿"""
-Article Generator â€” Uses Gemini to write SEO-optimized articles
+Article Generator - Uses Gemini to write SEO-optimized articles
 from source material gathered by the source fetcher.
 """
 import logging
 import re
-import time
-
-from google import genai
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 from writer.source_fetcher import fetch_multiple_sources
-from writer.seo_prompt import build_article_prompt, get_category_for_topic
+from writer.seo_prompt import build_article_prompt, get_category_for_topic, build_image_alt_text
 from detection.language_router import normalize_lang
 from gemini_client import generate_content_with_fallback
 
 logger = logging.getLogger(__name__)
 
-# Gemini retry handled by gemini_client
+
+def _derive_focus_keyword(topic_title, matched_keyword="", content_angle=""):
+    """Turn a broad scheme/topic name into a stronger long-tail focus keyword."""
+    topic_title = (topic_title or "").strip()
+    matched_keyword = (matched_keyword or "").strip()
+    content_angle = (content_angle or "").strip().lower()
+    base = matched_keyword or topic_title
+    title_lower = topic_title.lower()
+
+    if any(token in title_lower or token in content_angle for token in ["status", "beneficiary"]):
+        return f"{base} status check 2026".strip()
+    if any(token in title_lower or token in content_angle for token in ["ekyc", "e-kyc", "aadhaar"]):
+        return f"{base} eKYC update 2026".strip()
+    if any(token in title_lower or token in content_angle for token in ["installment", "kist", "payment"]):
+        return f"{base} installment date 2026".strip()
+    if any(token in title_lower or token in content_angle for token in ["eligibility", "eligible"]):
+        return f"{base} eligibility 2026".strip()
+    if any(token in title_lower or token in content_angle for token in ["apply", "registration"]):
+        return f"{base} apply online 2026".strip()
+    if any(token in title_lower or token in content_angle for token in ["documents", "document"]):
+        return f"{base} required documents 2026".strip()
+    if any(token in title_lower or token in content_angle for token in ["rejected", "failed", "error"]):
+        return f"{base} rejected payment fix".strip()
+    if any(token in title_lower or token in content_angle for token in ["news", "update", "announcement", "released"]):
+        return f"{base} latest update 2026".strip()
+    return (topic_title or base).strip()
 
 
 def _search_news_for_trend(keyword):
     """Search Google News RSS and NewsAPI to find background context for a trending keyword."""
     urls = []
-    
-    # 1. Google News RSS
+
     try:
         import feedparser
         import urllib.parse
@@ -39,7 +60,6 @@ def _search_news_for_trend(keyword):
     except Exception as e:
         logger.warning(f"Failed to fetch Google News RSS for trend: {e}")
 
-    # 2. NewsAPI
     try:
         from newsapi import NewsApiClient
         from datetime import datetime, timedelta
@@ -50,7 +70,7 @@ def _search_news_for_trend(keyword):
             language="en",
             sort_by="relevancy",
             from_param=from_date,
-            page_size=5
+            page_size=5,
         )
         if results.get("status") == "ok":
             for article in results.get("articles", [])[:3]:
@@ -59,17 +79,14 @@ def _search_news_for_trend(keyword):
                     urls.append(url)
     except Exception as e:
         logger.warning(f"Failed to fetch NewsAPI for trend: {e}")
-        
+
     return urls
 
 
 def generate_article(topic, source_urls=None):
-    """
-    Generate a complete SEO-optimized article for a trending topic.
-    """
-    logger.info(f"ðŸ“ Generating article for: {topic.get('topic', 'Unknown')}")
+    """Generate a complete SEO-optimized article for a trending topic."""
+    logger.info(f"Generating article for: {topic.get('topic', 'Unknown')}")
 
-    # â”€â”€ Step 1: Gather source material â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if source_urls is None:
         source_urls = []
         for story in topic.get("stories", []):
@@ -77,34 +94,24 @@ def generate_article(topic, source_urls=None):
             if url and url.startswith("http"):
                 source_urls.append(url)
 
-    # Also add the top_url if available
     top_url = topic.get("top_url", "")
     if top_url and top_url not in source_urls:
         source_urls.insert(0, top_url)
 
-    # Check if this is a pure trend alert
-    is_pure_trend = True
-    if not source_urls:
-        is_pure_trend = True
-    else:
-        for url in source_urls:
-            if "trends.google.com" not in url:
-                is_pure_trend = False
-                break
-                
+    is_pure_trend = True if not source_urls else all("trends.google.com" in url for url in source_urls)
     if is_pure_trend:
         keyword = topic.get("matched_keyword") or topic.get("topic", "").replace("Rising search:", "").strip()
-        logger.info(f"  ðŸ” Pure trend detected. Searching active news for: '{keyword}'")
+        logger.info(f"Pure trend detected. Searching active news for: '{keyword}'")
         found_urls = _search_news_for_trend(keyword)
         if found_urls:
             source_urls.extend(found_urls)
-            logger.info(f"  âœ… Found {len(found_urls)} background articles for context.")
+            logger.info(f"Found {len(found_urls)} background articles for context.")
 
-    logger.info(f"  Fetching {len(source_urls)} source URLs...")
+    logger.info(f"Fetching {len(source_urls)} source URLs...")
     source_texts = fetch_multiple_sources(source_urls, max_sources=8)
 
     if not source_texts:
-        logger.warning("  âš ï¸ No source material could be extracted. Using topic summary only.")
+        logger.warning("No source material could be extracted. Using topic summary only.")
         source_texts = [{
             "title": topic.get("topic", ""),
             "text": "\n".join(s.get("summary", "") for s in topic.get("stories", [])),
@@ -112,7 +119,6 @@ def generate_article(topic, source_urls=None):
             "url": "",
         }]
 
-    # â”€â”€ Step 2: Build the prompt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     target_lang = normalize_lang(topic.get("lang", "en"))
 
     try:
@@ -124,190 +130,155 @@ def generate_article(topic, source_urls=None):
             content_angle=topic.get("content_angle", ""),
         )
     except Exception as e:
-        logger.error(f"  âŒ Failed to build prompt: {e}")
+        logger.error(f"Failed to build prompt: {e}")
         return None
 
-    # â”€â”€ Step 3: Call Gemini â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try:
-        logger.info("  ðŸ¤– Calling Gemini API...")
-        response = generate_content_with_fallback(
-            model=config.GEMINI_MODEL,
-            contents=prompt
-        )
+        logger.info("Calling Gemini API...")
+        response = generate_content_with_fallback(model=config.GEMINI_MODEL, contents=prompt)
         raw_output = (getattr(response, "text", None) or "").strip()
         if not raw_output:
-            logger.error("  âŒ Gemini returned empty or blocked content (no text). Try again or check API/safety settings.")
+            logger.error("Gemini returned empty or blocked content (no text).")
             return None
-        logger.info(f"  âœ… Gemini responded ({len(raw_output)} chars)")
-        logger.debug(f"RAW AI OUTPUT:\n{raw_output}")
-
     except Exception as e:
-        logger.error(f"  âŒ Gemini API error: {e}")
+        logger.error(f"Gemini API error: {e}")
         return None
 
-    # â”€â”€ Step 4: Parse structured output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     article = _parse_article_output(
         raw_output,
         matched_keyword=topic.get("matched_keyword", ""),
         topic_title=topic.get("topic", ""),
+        content_angle=topic.get("content_angle", ""),
     )
 
-    if article:
-        # Ensure we have usable content (model sometimes omits markers)
-        if len(article.get("content", "") or "") < 100:
-            logger.warning("  âš ï¸ Parsed content too short; treating as parse failure.")
-            logger.debug(f"  Raw output preview: {raw_output[:500]}...")
-            return None
-        article["sources_used"] = [s.get("source_domain", "") for s in source_texts]
-        article["word_count"] = len(article.get("content_html", "").split())
-        # Assign category from topic: match scheme categories or default to "news"
-        article["category"] = get_category_for_topic(
-            topic.get("topic", ""),
-            topic.get("matched_keyword", ""),
-        )
-        article["lang"] = target_lang if target_lang in ("en", "hi", "te") else article.get("lang", "en")
-        logger.info(f"  âœ… Article generated: '{article['title']}' (category: {article['category']})")
-    else:
-        logger.error("  âŒ Failed to parse Gemini output. Check that the model returns TITLE, CONTENT_START/END, etc.")
-        logger.debug(f"  Raw output preview: {raw_output[:400]}...")
+    if not article:
+        logger.error("Failed to parse Gemini output.")
+        return None
 
+    if len(article.get("content", "") or "") < 100:
+        logger.warning("Parsed content too short; treating as parse failure.")
+        return None
+
+    article["sources_used"] = [s.get("source_domain", "") for s in source_texts]
+    article["word_count"] = len(article.get("content_html", "").split())
+    article["category"] = get_category_for_topic(topic.get("topic", ""), topic.get("matched_keyword", ""))
+    article["focus_keyword"] = (
+        article.get("focus_keyword")
+        or _derive_focus_keyword(topic.get("topic", ""), topic.get("matched_keyword", ""), topic.get("content_angle", ""))
+    )
+    article["matched_keyword"] = article.get("focus_keyword")
+    article["seo_title"] = article.get("seo_title") or article.get("title", "")
+    article["image_alt"] = article.get("image_alt") or build_image_alt_text(
+        topic.get("topic", ""), article.get("focus_keyword", ""), article.get("category", "")
+    )
+    article["lang"] = target_lang if target_lang in ("en", "hi", "te") else article.get("lang", "en")
+    logger.info(f"Article generated: '{article['title']}' (category: {article['category']})")
     return article
 
 
-def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
-    """
-    Parse the structured output from Gemini into article components.
-    Includes robust fallback logic for when AI omits labels or markers.
-    """
+def _parse_article_output(raw_text, matched_keyword="", topic_title="", content_angle=""):
+    """Parse the structured output from Gemini into article components."""
     try:
         result = {}
-        
-        # Helper to strip markdown and excessive punctuation
+
         def clean_meta(val):
-            if not val: return ""
-            # Strip markdown artifacts and quotes
+            if not val:
+                return ""
             return re.sub(r'[*_#`"]', '', val).strip()
 
-        # â”€â”€ 1. TITLE â”€â”€ (enforce max 60 chars for SEO)
+        def match_field(pattern):
+            m = re.search(pattern, raw_text, re.IGNORECASE | re.DOTALL)
+            return clean_meta(m.group(1)) if m else ""
+
         MAX_TITLE_LEN = 60
-        title_match = re.search(r'(?:1\.|TITLE:)\s*(.+?)(?:\n|2\.|META_DESCRIPTION:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
-        if title_match:
-            result["title"] = clean_meta(title_match.group(1))
-        else:
+        result["title"] = match_field(r'(?:1\.|TITLE:)\s*(.+?)(?:\n|2\.|SEO_TITLE:|3\.|META_DESCRIPTION:|---|$)')
+        if not result["title"]:
             lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
             result["title"] = clean_meta(lines[0]) if lines else "Agriculture Update"
         if len(result["title"]) > MAX_TITLE_LEN:
             result["title"] = result["title"][:MAX_TITLE_LEN].rsplit(" ", 1)[0] or result["title"][:MAX_TITLE_LEN]
 
-        # â”€â”€ 2. META_DESCRIPTION â”€â”€ (attractive for search; 140â€“155 chars ideal)
-        meta_match = re.search(r'(?:2\.|META_DESCRIPTION:)\s*(.+?)(?:\n|3\.|SLUG:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
-        if meta_match:
-            result["meta_description"] = clean_meta(meta_match.group(1))
-        else:
-            lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
-            if len(lines) > 1 and len(lines[1]) > 50:
-                result["meta_description"] = clean_meta(lines[1])
-            else:
-                result["meta_description"] = result["title"][:155]
+        result["seo_title"] = match_field(r'(?:2\.|SEO_TITLE:)\s*(.+?)(?:\n|3\.|META_DESCRIPTION:|4\.|FOCUS_KEYWORD:|---|$)') or result["title"]
+        result["meta_description"] = match_field(r'(?:3\.|META_DESCRIPTION:)\s*(.+?)(?:\n|4\.|FOCUS_KEYWORD:|5\.|IMAGE_ALT:|6\.|SLUG:|---|$)')
+        result["focus_keyword"] = match_field(r'(?:4\.|FOCUS_KEYWORD:)\s*(.+?)(?:\n|5\.|IMAGE_ALT:|6\.|SLUG:|---|$)')
+        result["image_alt"] = match_field(r'(?:5\.|IMAGE_ALT:)\s*(.+?)(?:\n|6\.|SLUG:|7\.|TAGS:|---|$)')
 
-        # â”€â”€ 3. SLUG â”€â”€ (short, max 50 chars, lowercase-kebab)
         MAX_SLUG_LEN = 50
-        slug_match = re.search(r'(?:3\.|SLUG:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
+        slug_match = re.search(r'(?:6\.|SLUG:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
         if slug_match:
             result["slug"] = re.sub(r'-+', '-', clean_meta(slug_match.group(1).lower()).strip('-'))
         else:
             result["slug"] = re.sub(r'[^a-z0-9]+', '-', result["title"].lower()).strip('-')
         result["slug"] = result["slug"][:MAX_SLUG_LEN].rstrip('-')
 
-        # â”€â”€ 4. TAGS â”€â”€
-        tags_match = re.search(r'(?:4\.|TAGS:)\s*(.+?)(?:\n|5\.|CATEGORY:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
-        if tags_match:
-            result["tags"] = [clean_meta(t) for t in tags_match.group(1).split(",") if t.strip()]
-        else:
-            result["tags"] = ["agriculture", "india"]
+        tags_match = re.search(r'(?:7\.|TAGS:)\s*(.+?)(?:\n|8\.|CATEGORY:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
+        result["tags"] = [clean_meta(t) for t in tags_match.group(1).split(',') if t.strip()] if tags_match else ["agriculture", "india"]
 
-        # â”€â”€ 5. CATEGORY â”€â”€
-        category_match = re.search(r'(?:5\.|CATEGORY:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
+        category_match = re.search(r'(?:8\.|CATEGORY:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
         result["category"] = clean_meta(category_match.group(1).lower()) if category_match else "news"
-        # Use provided keyword or title as fallback to avoid NameError if local lookup fails
-        final_kw = matched_keyword if matched_keyword else clean_meta(topic_title)
-        result["matched_keyword"] = final_kw
 
-        # â”€â”€ 6. LANG â”€â”€
-        lang_match = re.search(r'(?:6\.|LANG:)\s*([a-z]{2})', raw_text, re.IGNORECASE)
+        final_kw = matched_keyword if matched_keyword else clean_meta(topic_title)
+        if not result["focus_keyword"]:
+            result["focus_keyword"] = _derive_focus_keyword(topic_title, final_kw, content_angle)
+        result["matched_keyword"] = result["focus_keyword"]
+
+        lang_match = re.search(r'(?:9\.|LANG:)\s*([a-z]{2})', raw_text, re.IGNORECASE)
         result["lang"] = clean_meta(lang_match.group(1).lower()) if lang_match else "en"
 
-        # â”€â”€ 7. CONTENT â”€â”€
         content_block_match = re.search(r'---CONTENT_START---(.*?)---CONTENT_END---', raw_text, re.DOTALL)
         if content_block_match:
             result["content"] = content_block_match.group(1).strip()
         else:
-            # Fuzzy: look for anything after the LANG/6 line or marked 7.
-            fuzzy_parts = re.split(r'(?:7\.|---CONTENT_START---).*?\n', raw_text, maxsplit=1, flags=re.IGNORECASE | re.DOTALL)
+            fuzzy_parts = re.split(r'(?:10\.|---CONTENT_START---).*?\n', raw_text, maxsplit=1, flags=re.IGNORECASE | re.DOTALL)
             if len(fuzzy_parts) > 1:
                 result["content"] = fuzzy_parts[1].split("---CONTENT_END---")[0].strip()
             else:
-                # Absolute fallback: Everything after the first 6 lines (skip TITLE/META/SLUG/TAGS/CATEGORY/LANG)
                 lines = raw_text.split("\n")
-                result["content"] = "\n".join(lines[6:]).strip() if len(lines) > 6 else raw_text
+                result["content"] = "\n".join(lines[9:]).strip() if len(lines) > 9 else raw_text
         if not result["content"]:
             result["content"] = raw_text
 
-        # Meta description: ensure 140â€“155 chars and attractive (fallback from content if too short)
         md = (result.get("meta_description") or result["title"]).strip()[:155]
         if len(md) < 100 and result["content"]:
             first = result["content"].split(".")[0].strip()[:120]
             if first:
                 md = (md + " " + first).strip()[:155]
         result["meta_description"] = md or result["title"][:155]
+        result["seo_title"] = (result.get("seo_title") or result["title"])[:65].strip()
+        if not result.get("image_alt"):
+            result["image_alt"] = build_image_alt_text(topic_title, result.get("focus_keyword", ""), result.get("category", ""))
 
-        # â”€â”€ 7. FAQ â”€â”€ Extract FAQPage schema; keep only if it has real questions (not placeholders)
         result["faq_html"] = ""
         faq_block = re.search(r'---FAQ_START---(.*?)---FAQ_END---', raw_text, re.DOTALL)
         if faq_block:
             result["faq_html"] = re.sub(r'<!--.*?-->', '', faq_block.group(1), flags=re.DOTALL).strip()
         if not result["faq_html"]:
-            # Fallback: find any FAQPage JSON-LD script in the response
-            schema_match = re.search(
-                r'<script\s+type=["\']application/ld\+json["\'].*?FAQPage.*?</script>',
-                raw_text, re.DOTALL | re.IGNORECASE
-            )
+            schema_match = re.search(r'<script\s+type=["\']application/ld\+json["\'].*?FAQPage.*?</script>', raw_text, re.DOTALL | re.IGNORECASE)
             if schema_match:
                 result["faq_html"] = schema_match.group(0).strip()
-        if result["faq_html"]:
-            stripped_faq = result["faq_html"].strip()
-            if not re.search(r'<script\b', stripped_faq, re.IGNORECASE):
-                stripped_faq = (
-                    '<script type="application/ld+json">\n'
-                    + stripped_faq
-                    + '\n</script>'
-                )
-            result["faq_html"] = stripped_faq
-        # Reject placeholder-only schema (so we don't publish fake FAQ)
+        if result["faq_html"] and not re.search(r'<script\b', result["faq_html"], re.IGNORECASE):
+            result["faq_html"] = '<script type="application/ld+json">\n' + result["faq_html"] + '\n</script>'
+
         placeholder_phrases = (
-            "Insert Question", "Insert detailed answer", "First real question in full",
-            "Second real question?", "Third real question?", "[write actual question]",
-            "[Write 2â€“4 sentence answer", "[Write answer.]"
+            "Insert Question",
+            "Insert detailed answer",
+            "First real question in full",
+            "Second real question?",
+            "Third real question?",
+            "[write actual question]",
+            "[Write 2 to 4 sentence answer",
+            "[Write answer.]",
         )
         if result["faq_html"] and any(p in result["faq_html"] for p in placeholder_phrases):
             result["faq_html"] = ""
-        # Require at least one real question (name field contains a question ending with ?)
         if result["faq_html"] and '"name":' in result["faq_html"]:
             if not re.search(r'"name":\s*"[^"]*\?"', result["faq_html"]):
                 result["faq_html"] = ""
 
-        # â”€â”€ Markdown to HTML â”€â”€
         import markdown
+        result["content_html"] = markdown.markdown(result["content"], extensions=['nl2br', 'sane_lists'])
 
-        result["content_html"] = markdown.markdown(
-            result["content"],
-            extensions=['nl2br', 'sane_lists']
-        )
-
-        # â”€â”€ Build FAQ from schema (ALWAYS, as a guarantee) â”€â”€
-        # This ensures visible questions even when the AI outputs only plain paragraphs.
         def _build_faq_from_schema(faq_html_str):
-            """Parse FAQ JSON-LD schema and return standard HTML with visible questions."""
             import json as _json
             script_body = re.search(r'<script[^>]*>([\s\S]*?)</script>', faq_html_str, re.IGNORECASE)
             if not script_body:
@@ -333,55 +304,36 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
                 parts.append(f'<!-- wp:paragraph -->\n<p>{a_esc}</p>\n<!-- /wp:paragraph -->')
             return "\n".join(parts)
 
-        # Check if content already has properly formed FAQ headings
-        has_visible_faq = bool(re.search(
-            r'<h[234][^>]*>[^<]*\?[^<]*</h[234]>',
-            result["content_html"]
-        ))
-
+        has_visible_faq = bool(re.search(r'<h[234][^>]*>[^<]*\?[^<]*</h[234]>', result["content_html"]))
         if not has_visible_faq and result.get("faq_html") and "FAQPage" in result["faq_html"]:
             try:
                 faq_list_html = _build_faq_from_schema(result["faq_html"])
                 if faq_list_html:
-                    # Find FAQ heading and replace everything after it with the proper list
-                    faq_heading_match = re.search(
-                        r'(<h2[^>]*>.*?Frequently Asked Questions.*?</h2>)',
-                        result["content_html"],
-                        re.IGNORECASE | re.DOTALL
-                    )
+                    faq_heading_match = re.search(r'(<h2[^>]*>.*?Frequently Asked Questions.*?</h2>)', result["content_html"], re.IGNORECASE | re.DOTALL)
                     if faq_heading_match:
                         start = result["content_html"].find(faq_heading_match.group(0))
                         new_section = faq_heading_match.group(0) + "\n\n" + faq_list_html
                         result["content_html"] = result["content_html"][:start] + new_section
                     else:
                         result["content_html"] += "\n\n<!-- wp:heading {\"level\":2} -->\n<h2>Frequently Asked Questions</h2>\n<!-- /wp:heading -->\n\n" + faq_list_html
-                    logger.info("  âœ… FAQ list rebuilt from schema (questions now visible)")
             except Exception as faq_e:
                 logger.debug(f"FAQ list build failed: {faq_e}")
 
-        # Assembly: wrap body in padded container (medium padding on all sides, below featured image)
-        PADDING_STYLE = "padding: 1.5rem;"
-        wrapped_body = (
-            f'<div class="kisan-article-body entry-content-wrap" style="{PADDING_STYLE}">'
-            f"\n{result['content_html']}\n</div>"
-        )
-
-        # FAQ schema: in Gutenberg Custom HTML block; hidden so it never shows as text (Google still reads it)
+        wrapped_body = f'<div class="kisan-article-body entry-content-wrap" style="padding: 1.5rem;">\n{result["content_html"]}\n</div>'
         faq_block_output = ""
         if result["faq_html"]:
             hidden_schema = (
                 '<div class="kisan-faq-schema" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap;" aria-hidden="true">'
                 + result["faq_html"]
-                + "</div>"
+                + '</div>'
             )
             faq_block_output = "\n\n<!-- wp:html -->\n" + hidden_schema + "\n<!-- /wp:html -->"
 
+        result["faq_schema"] = result.get("faq_html", "")
         result["full_content"] = wrapped_body + faq_block_output
-
         return result
-
-    except Exception as e:
-        logger.exception("  âŒ Parse error")
+    except Exception:
+        logger.exception("Parse error")
         return None
 
 
@@ -390,11 +342,9 @@ if __name__ == "__main__":
     test_topic = {
         "topic": "PM Kisan Beneficiary Status 2026",
         "matched_keyword": "pm-kisan-samman-nidhi",
-        "stories": [{"summary": "Latest updates on PM Kisan scheme for farmers."}]
+        "stories": [{"summary": "Latest updates on PM Kisan scheme for farmers."}],
     }
     article = generate_article(test_topic)
     if article:
         print(f"TITLE: {article['title']}")
         print(f"CONTENT PREVIEW: {article['full_content'][:500]}...")
-
-

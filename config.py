@@ -396,6 +396,7 @@ SCAN_INTERVAL_MINUTES = 60      # How often the agent scans
 DEDUP_WINDOW_HOURS = 72         # Don't re-alert about the same story within 3 days (was 7, reduced for freshness)
 BREAKING_SPIKE_SCORE = 95       # Auto-break mode trigger when topic score is very high
 MIN_COVERAGE_TOPICS_PER_CYCLE = 4 # Ensure minimum scheme-angle coverage ideas per scan
+MIN_SCHEME_TOPICS_PER_CYCLE = 5   # Reserve enough topic slots each cycle for scheme-led content
 MAX_REFRESH_TOPICS_PER_CYCLE = 2  # Refresh older published scheme pages automatically
 AUTO_GENERATE_BREAKING = False    # Keep manual approval flow; no auto-draft unless explicitly enabled
 REQUIRE_ARTICLE_CONFIRMATION = True # Ask for confirmation before starting article generation
@@ -426,5 +427,7 @@ USE_PLACEHOLDER_IMAGE = os.getenv("USE_PLACEHOLDER_IMAGE", "false").lower() in (
 # â”€â”€ Logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 LOG_FILE = "agent.log"
 LOG_LEVEL = "INFO"
+
+
 
 

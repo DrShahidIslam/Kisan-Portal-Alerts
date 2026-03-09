@@ -1,4 +1,4 @@
-"""
+﻿"""
 WordPress Client - Handles all WordPress REST API interactions:
 creating posts, uploading media, setting categories/tags,
 and injecting RankMath SEO fields.
@@ -124,7 +124,7 @@ def create_post(article, featured_image_path=None, status=None):
 
     media_id = None
     if featured_image_path and os.path.exists(featured_image_path):
-        media_id = upload_media(featured_image_path, article.get("title", ""))
+        media_id = upload_media(featured_image_path, article.get("image_alt", "") or article.get("title", ""))
 
     category_id = get_or_create_category(article.get("category", config.WP_DEFAULT_CATEGORY))
 
@@ -257,7 +257,7 @@ def _publish_via_webhook(article, featured_image_path=None, status=None):
         "category": article.get("category", config.WP_DEFAULT_CATEGORY),
         "rank_math_title": article.get("seo_title", article.get("title", "")),
         "rank_math_description": article.get("meta_description", ""),
-        "rank_math_focus_keyword": article.get("matched_keyword", "") or article.get("focus_keyword", "") or (article.get("tags") or [""])[0] or article.get("title", ""),
+        "rank_math_focus_keyword": article.get("focus_keyword", "") or article.get("matched_keyword", "") or (article.get("tags") or [""])[0] or article.get("title", ""),
         "faq_schema": article.get("faq_schema", ""),
         "lang": article.get("lang", ""),
     }
@@ -265,7 +265,7 @@ def _publish_via_webhook(article, featured_image_path=None, status=None):
         with open(featured_image_path, "rb") as f:
             payload["featured_image_base64"] = base64.b64encode(f.read()).decode("ascii")
         payload["featured_image_filename"] = os.path.basename(featured_image_path)
-        payload["featured_image_alt"] = article.get("title", "")
+        payload["featured_image_alt"] = article.get("image_alt", "") or article.get("title", "")
 
     for attempt in range(3):
         headers = HEADERS.copy()
@@ -478,7 +478,7 @@ def _set_rankmath_meta(post_id, article):
         logger.warning("  Skipping RankMath update because post_id is missing.")
         return
 
-    focus_kw = article.get("matched_keyword", "") or article.get("focus_keyword", "")
+    focus_kw = article.get("focus_keyword", "") or article.get("matched_keyword", "")
     if not focus_kw and article.get("tags"):
         focus_kw = article["tags"][0]
     if not focus_kw:
@@ -641,4 +641,5 @@ if __name__ == "__main__":
         print("WordPress connection successful!")
     else:
         print("WordPress connection failed!")
+
 
