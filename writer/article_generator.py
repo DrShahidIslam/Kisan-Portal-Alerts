@@ -1,4 +1,4 @@
-﻿"""
+"""
 Article Generator - Uses Gemini to write SEO-optimized articles
 from source material gathered by the source fetcher.
 """
@@ -259,6 +259,10 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title="", content_
         if result["faq_html"] and not re.search(r'<script\b', result["faq_html"], re.IGNORECASE):
             result["faq_html"] = '<script type="application/ld+json">\n' + result["faq_html"] + '\n</script>'
 
+        # Remove markdown code blocks that Gemini might wrap around JSON
+        result["faq_html"] = re.sub(r'^```[a-zA-Z]*\s*', '', result["faq_html"], flags=re.MULTILINE)
+        result["faq_html"] = re.sub(r'```\s*$', '', result["faq_html"], flags=re.MULTILINE).strip()
+
         placeholder_phrases = (
             "Insert Question",
             "Insert detailed answer",
@@ -283,7 +287,11 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title="", content_
             script_body = re.search(r'<script[^>]*>([\s\S]*?)</script>', faq_html_str, re.IGNORECASE)
             if not script_body:
                 return None
-            data = _json.loads(script_body.group(1).strip())
+            raw_json_str = script_body.group(1).strip()
+            # Clean up markdown code blocks if present
+            raw_json_str = re.sub(r'^```[a-zA-Z]*\s*', '', raw_json_str, flags=re.MULTILINE)
+            raw_json_str = re.sub(r'```\s*$', '', raw_json_str, flags=re.MULTILINE).strip()
+            data = _json.loads(raw_json_str)
             entities = data.get("mainEntity") or []
             qa_list = []
             for ent in entities:
@@ -311,9 +319,8 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title="", content_
                 if faq_list_html:
                     faq_heading_match = re.search(r'(<h2[^>]*>.*?Frequently Asked Questions.*?</h2>)', result["content_html"], re.IGNORECASE | re.DOTALL)
                     if faq_heading_match:
-                        start = result["content_html"].find(faq_heading_match.group(0))
                         new_section = faq_heading_match.group(0) + "\n\n" + faq_list_html
-                        result["content_html"] = result["content_html"][:start] + new_section
+                        result["content_html"] = result["content_html"].replace(faq_heading_match.group(0), new_section, 1)
                     else:
                         result["content_html"] += "\n\n<!-- wp:heading {\"level\":2} -->\n<h2>Frequently Asked Questions</h2>\n<!-- /wp:heading -->\n\n" + faq_list_html
             except Exception as faq_e:
