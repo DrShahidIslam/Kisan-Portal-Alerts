@@ -145,6 +145,20 @@ def create_post(article, featured_image_path=None, status=None):
         out = _publish_via_webhook(article, featured_image_path, status)
         if out is None and LAST_PUBLISH_ERROR:
             logger.error(f"  Webhook: {LAST_PUBLISH_ERROR}")
+            
+        if out and out.get("status") in ["publish", "publish_live", "future"]:
+            try:
+                from writer.seo_prompt import add_published_post
+                from datetime import datetime
+                add_published_post(
+                    out.get("post_url", ""),
+                    out.get("title", article.get("title", "Untitled")),
+                    out.get("slug", article.get("slug", "")),
+                    published_at=datetime.utcnow().isoformat(),
+                )
+            except Exception as e:
+                logger.warning(f"  Could not add published post for internal links (webhook create): {e}")
+                
         return out
 
     logger.info(f"Publishing to WordPress: '{article.get('title', 'Untitled')}'")
@@ -312,6 +326,8 @@ def _publish_via_webhook(article, featured_image_path=None, status=None):
                         "post_id": data.get("post_id"),
                         "post_url": data.get("post_url", ""),
                         "status": data.get("status", status),
+                        "title": data.get("title", article.get("title", "")),
+                        "slug": data.get("slug", article.get("slug", "")),
                     }
                 if data:
                     logger.error(f"  Webhook returned success=false: {data.get('message', '')}")
@@ -557,7 +573,26 @@ def _set_rankmath_meta(post_id, article):
 def update_post_status(post_id, status="publish"):
     """Update a post's status (e.g., from draft to publish). Uses webhook if configured, else REST API."""
     if getattr(config, "WP_PUBLISH_WEBHOOK_URL", None) and getattr(config, "WP_PUBLISH_SECRET", None):
-        return _update_status_via_webhook(post_id, status)
+        result = _update_status_via_webhook(post_id, status)
+        if result:
+            link = result.get("post_url")
+            title = result.get("title", "")
+            slug = result.get("slug", "")
+            if status == "publish":
+                try:
+                    from writer.seo_prompt import add_published_post
+                    from datetime import datetime
+                    if link:
+                        add_published_post(
+                            link,
+                            title or f"Draft {post_id}",
+                            slug,
+                            published_at=datetime.utcnow().isoformat(),
+                        )
+                except Exception as e:
+                    logger.warning(f"  Could not add published post for internal links from draft update webhook: {e}")
+            return link
+        return None
     try:
         response = requests.post(
             f"{API_BASE}/posts/{post_id}",
@@ -618,7 +653,11 @@ def _update_status_via_webhook(post_id, status="publish"):
         if response.status_code == 200:
             data = _safe_json(response)
             if data and data.get("success"):
-                return data.get("post_url")
+                return {
+                    "post_url": data.get("post_url"),
+                    "title": data.get("title", ""),
+                    "slug": data.get("slug", ""),
+                }
             if not data:
                 logger.error(f"Publish draft webhook: response not JSON: {response.text[:200]}")
                 return None

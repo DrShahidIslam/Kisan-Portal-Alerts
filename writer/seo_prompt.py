@@ -361,13 +361,18 @@ SEO / AEO / GEO STRATEGY
 - Format: <a href="EXACT_URL_FROM_LIST">anchor text</a>.
 - {links_context}
 
-2. LANGUAGE REQUIREMENT
+2. EXTERNAL LINKING (STRICT)
+- You MUST include exactly 1 high-authority external link (e.g. .gov.in, .nic.in, or reputable news site) that serves as a useful reference for the farmer.
+- Format: <a href="https://example.gov.in" target="_blank" rel="noopener noreferrer">official website</a>.
+- Ensure the external link is naturally placed within the content.
+
+3. LANGUAGE REQUIREMENT
 - The full article content must be in TARGET LANGUAGE only: {lang_labels[target_lang]} ({target_lang}).
 - Do not mix languages except official scheme names.
 - Set LANG field exactly to: {target_lang}.
 - {language_rules}
 
-3. SEO REQUIREMENTS
+4. SEO REQUIREMENTS
 - PRIMARY KEYWORD / FOCUS KEYWORD is: "{primary_keyword}".
 - The TITLE must contain the PRIMARY KEYWORD exactly or the closest exact scheme phrase.
 - The SEO_TITLE should be optimized for click-through rate and may be slightly different from the TITLE, but it must still lead with the PRIMARY KEYWORD or closest exact phrase.
@@ -378,7 +383,7 @@ SEO / AEO / GEO STRATEGY
 - Use 2 to 4 related secondary phrases naturally in the article, such as status check, eligibility, documents required, apply online, payment status, installment date, beneficiary list, or claim status.
 - Keep the article tightly focused on the PRIMARY KEYWORD. Do not drift into broad agriculture commentary.
 
-4. AEO / GEO REQUIREMENTS
+5. AEO / GEO REQUIREMENTS
 - Answer the main search query early, clearly, and directly in 2 to 4 sentences near the top.
 - Write in a way that can be quoted by AI overviews and answer engines: clear facts, clean phrasing, and no fluff.
 - Add question-based subheadings where useful, such as eligibility, status check, installment date, eKYC, documents, amount, or how to apply.
@@ -388,14 +393,14 @@ SEO / AEO / GEO STRATEGY
 - The article structure must match the selected content template.
 - {template_rules}
 
-5. DO NOT DO THIS
+6. DO NOT DO THIS
 - Do not mention Google Trends, search volume, spike score, or keyword metrics.
 - Do not write filler introductions.
 - Do not write generic motivational text.
 - Do not invent facts beyond the source material.
 - Do not stuff keywords unnaturally.
 
-6. HTML FORMATTING
+7. HTML FORMATTING
 - Use ## for H2 headers and ### for H3 headers.
 - Use * for bulleted lists.
 - Bold important agriculture terms using **term**.

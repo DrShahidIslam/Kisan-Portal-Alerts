@@ -79,7 +79,10 @@ if (!empty($data['action']) && $data['action'] === 'publish_draft' && isset($dat
         wp_set_current_user($webhook_author_id);
         $updated = wp_update_post(['ID' => $post_id, 'post_status' => $new_status], true);
         if (!is_wp_error($updated) && $updated > 0) {
-            echo json_encode(['success' => true, 'post_id' => $post_id, 'post_url' => get_permalink($post_id), 'status' => $new_status]);
+            $post_obj = get_post($post_id);
+            $title = $post_obj ? $post_obj->post_title : '';
+            $slug = $post_obj ? $post_obj->post_name : '';
+            echo json_encode(['success' => true, 'post_id' => $post_id, 'post_url' => get_permalink($post_id), 'status' => $new_status, 'title' => $title, 'slug' => $slug]);
             exit;
         }
         $err_msg = is_wp_error($updated) ? $updated->get_error_message() : 'Update returned 0';
@@ -219,4 +222,6 @@ echo json_encode([
     'post_id' => (int) $post_id,
     'post_url' => $post_url,
     'status' => $status,
+    'title' => $title,
+    'slug' => $slug,
 ]);
