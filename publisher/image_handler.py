@@ -265,6 +265,18 @@ def _build_unsplash_query(article_title):
     return None
 
 
+def _build_stock_photo_queries(article_title):
+    """Build specific and broad fallback queries for stock-photo providers."""
+    queries = []
+    specific_query = _build_unsplash_query(article_title)
+    if specific_query:
+        queries.append(specific_query)
+    for broad_query in _UNSPLASH_BROAD_QUERIES:
+        if broad_query not in queries:
+            queries.append(broad_query)
+    return queries
+
+
 def _try_unsplash_image(article_title, output_path_webp, output_path_jpg):
     """Try Unsplash API for a high-quality stock photo (needs UNSPLASH_ACCESS_KEY).
     Strategy: try a keyword-extracted query first, then a broad agriculture fallback.
@@ -325,6 +337,98 @@ def _try_unsplash_image(article_title, output_path_webp, output_path_jpg):
     return None, None
 
 
+def _try_pexels_image(article_title, output_path_webp, output_path_jpg):
+    """Try Pexels photo search for a real editorial-style image."""
+    key = getattr(config, "PEXELS_API_KEY", None)
+    if not key:
+        logger.info("    Pexels: skipped (no API key)")
+        return None, None
+    try:
+        import requests
+
+        headers = {"Authorization": key}
+        for query in _build_stock_photo_queries(article_title):
+            logger.info(f"    Pexels: searching '{query}'...")
+            response = requests.get(
+                "https://api.pexels.com/v1/search",
+                headers=headers,
+                params={"query": query, "per_page": 5, "orientation": "landscape"},
+                timeout=15,
+            )
+            response.raise_for_status()
+            photos = (response.json() or {}).get("photos") or []
+            logger.info(f"    Pexels: {len(photos)} results for '{query}'")
+
+            for photo in photos:
+                src = photo.get("src") or {}
+                image_url = src.get("large2x") or src.get("large") or src.get("original")
+                if not image_url:
+                    continue
+                img_response = requests.get(image_url, timeout=20)
+                img_response.raise_for_status()
+                image_bytes = img_response.content
+                if len(image_bytes) < 5000:
+                    continue
+                result_webp = _compress_to_webp(image_bytes, output_path_webp)
+                result_jpg = _compress_to_jpg(image_bytes, output_path_jpg)
+                if result_webp and result_jpg:
+                    logger.info(f"    Pexels: image saved ({result_webp})")
+                    return result_webp, result_jpg
+
+        logger.info("    Pexels: no usable image found after all queries")
+    except Exception as e:
+        logger.warning(f"    Pexels failed: {e}")
+    return None, None
+
+
+def _try_pixabay_image(article_title, output_path_webp, output_path_jpg):
+    """Try Pixabay image search for a stock-photo fallback."""
+    key = getattr(config, "PIXABAY_API_KEY", None)
+    if not key:
+        logger.info("    Pixabay: skipped (no API key)")
+        return None, None
+    try:
+        import requests
+
+        for query in _build_stock_photo_queries(article_title):
+            logger.info(f"    Pixabay: searching '{query}'...")
+            response = requests.get(
+                "https://pixabay.com/api/",
+                params={
+                    "key": key,
+                    "q": query,
+                    "image_type": "photo",
+                    "orientation": "horizontal",
+                    "per_page": 5,
+                    "safesearch": "true",
+                },
+                timeout=15,
+            )
+            response.raise_for_status()
+            hits = (response.json() or {}).get("hits") or []
+            logger.info(f"    Pixabay: {len(hits)} results for '{query}'")
+
+            for hit in hits:
+                image_url = hit.get("largeImageURL") or hit.get("webformatURL")
+                if not image_url:
+                    continue
+                img_response = requests.get(image_url, timeout=20)
+                img_response.raise_for_status()
+                image_bytes = img_response.content
+                if len(image_bytes) < 5000:
+                    continue
+                result_webp = _compress_to_webp(image_bytes, output_path_webp)
+                result_jpg = _compress_to_jpg(image_bytes, output_path_jpg)
+                if result_webp and result_jpg:
+                    logger.info(f"    Pixabay: image saved ({result_webp})")
+                    return result_webp, result_jpg
+
+        logger.info("    Pixabay: no usable image found after all queries")
+    except Exception as e:
+        logger.warning(f"    Pixabay failed: {e}")
+    return None, None
+
+
 def _try_pollinations_image(article_title, output_path_webp, output_path_jpg):
     """Try Pollinations.ai (free). Returns (webp, jpg) or (None, None)."""
     logger.info("    Pollinations: generating image...")
@@ -374,10 +478,13 @@ def _generate_placeholder_image(article_title, output_path_webp, output_path_jpg
 def generate_featured_image(article_title, save_dir=None, source_url=None):
     """
     Generate a featured image. Fallback chain (in order):
-    1. Gemini 2.5 Flash Image (free, best quality AI, 500 req/day)
-    2. Unsplash (free, real stock photos, 50 req/hr)
-    3. Source article image (og:image or first img)
-    4. Pollinations (free AI, unreliable)
+    1. Gemini 2.5 Flash Image
+    2. Pexels
+    3. Pixabay
+    4. Unsplash
+    5. Source article image
+    6. Pollinations
+    7. Placeholder or gradient fallback
     Compresses to WebP and JPEG under 100KB.
     """
     if save_dir is None:
@@ -392,41 +499,70 @@ def generate_featured_image(article_title, save_dir=None, source_url=None):
     logger.info(f"  Generating featured image for: {article_title[:60]}")
 
     # ── 1. Gemini 2.5 Flash Image (free tier, best quality) ──
-    logger.info("    [1/4] Trying Gemini Flash Image...")
+    logger.info("    [1/7] Trying Gemini Flash Image...")
     webp, jpg = _try_gemini_flash_image(article_title, output_path_webp, output_path_jpg)
     if webp and jpg:
         return webp, jpg
-    logger.info("    [1/4] Gemini Flash Image: no image produced")
+    logger.info("    [1/7] Gemini Flash Image: no image produced")
 
     # ── 2. Unsplash (real stock photos) ──
+    if getattr(config, "PEXELS_API_KEY", None):
+        logger.info("    [2/7] Trying Pexels...")
+        webp, jpg = _try_pexels_image(article_title, output_path_webp, output_path_jpg)
+        if webp and jpg:
+            return webp, jpg
+        logger.info("    [2/7] Pexels: no image produced")
+    else:
+        logger.info("    [2/7] Pexels: skipped (no API key)")
+
+    if getattr(config, "PIXABAY_API_KEY", None):
+        logger.info("    [3/7] Trying Pixabay...")
+        webp, jpg = _try_pixabay_image(article_title, output_path_webp, output_path_jpg)
+        if webp and jpg:
+            return webp, jpg
+        logger.info("    [3/7] Pixabay: no image produced")
+    else:
+        logger.info("    [3/7] Pixabay: skipped (no API key)")
+
     if getattr(config, "UNSPLASH_ACCESS_KEY", None):
-        logger.info("    [2/4] Trying Unsplash...")
+        logger.info("    [4/7] Trying Unsplash...")
         webp, jpg = _try_unsplash_image(article_title, output_path_webp, output_path_jpg)
         if webp and jpg:
             return webp, jpg
-        logger.info("    [2/4] Unsplash: no image produced")
+        logger.info("    [4/7] Unsplash: no image produced")
     else:
-        logger.info("    [2/4] Unsplash: skipped (no API key)")
+        logger.info("    [4/7] Unsplash: skipped (no API key)")
 
     # ── 3. Source article og:image ──
     if source_url:
-        logger.info(f"    [3/4] Trying source article image from: {source_url[:60]}")
+        logger.info(f"    [5/7] Trying source article image from: {source_url[:60]}")
         webp, jpg = _try_source_image(source_url, output_path_webp, output_path_jpg)
         if webp and jpg:
             return webp, jpg
-        logger.info("    [3/4] Source image: no image produced")
+        logger.info("    [5/7] Source image: no image produced")
     else:
-        logger.info("    [3/4] Source image: skipped (no source URL)")
+        logger.info("    [5/7] Source image: skipped (no source URL)")
 
     # ── 4. Pollinations (free AI, unreliable) ──
-    logger.info("    [4/4] Trying Pollinations...")
+    logger.info("    [6/7] Trying Pollinations...")
     webp, jpg = _try_pollinations_image(article_title, output_path_webp, output_path_jpg)
     if webp and jpg:
         return webp, jpg
-    logger.info("    [4/4] Pollinations: no image produced")
+    logger.info("    [6/7] Pollinations: no image produced")
 
     # ── All sources failed ──
-    logger.warning("    All 4 image sources failed. Post will publish without featured image.")
+    logger.warning("    Remote image sources failed. Falling back to a local generated image.")
+    webp, jpg = _generate_placeholder_image(article_title, output_path_webp, output_path_jpg)
+    if webp and jpg:
+        logger.info("    [7/7] Placeholder image created successfully")
+        return webp, jpg
+
+    webp, jpg = _generate_gradient_fallback(output_path_webp, output_path_jpg)
+    if webp and jpg:
+        logger.info("    [7/7] Gradient fallback created successfully")
+        return webp, jpg
+
+    logger.error("    All image pathways failed, including local fallbacks.")
     return None, None
 
 
