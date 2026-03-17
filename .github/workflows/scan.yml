@@ -51,4 +51,7 @@ jobs:
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           WP_PUBLISH_WEBHOOK_URL: ${{ secrets.WP_PUBLISH_WEBHOOK_URL }}
           WP_PUBLISH_SECRET: ${{ secrets.WP_PUBLISH_SECRET }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: python main.py --once
