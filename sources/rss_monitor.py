@@ -31,6 +31,18 @@ def _matches_keywords(text, keywords=None):
     return False, None
 
 
+def _is_low_value_policy_item(text):
+    text = (text or "").lower()
+    low_value_terms = getattr(config, "LOW_VALUE_POLICY_TERMS", [])
+    if not any(term in text for term in low_value_terms):
+        return False
+    farmer_terms = (
+        "farmer", "farmers", "kisan", "scheme", "yojana", "subsidy", "payment",
+        "beneficiary", "eligibility", "apply", "registration", "crop", "mandi", "msp"
+    )
+    return not any(term in text for term in farmer_terms)
+
+
 def _hash_story(title, url):
     """Create a unique hash for a story based on title + URL."""
     raw = f"{title.strip().lower()}|{url.strip().lower()}"
@@ -65,6 +77,8 @@ def fetch_rss_stories():
                 link = entry.get("link", "")
 
                 combined_text = f"{title} {summary}"
+                if _is_low_value_policy_item(combined_text):
+                    continue
                 if is_agri_only_feed:
                     is_match, matched_keyword = True, "agriculture"
                 else:

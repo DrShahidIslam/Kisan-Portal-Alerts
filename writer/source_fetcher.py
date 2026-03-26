@@ -4,8 +4,10 @@ Used to gather factual information before generating AI articles.
 """
 import logging
 import re
+import html
 import requests
 from urllib.parse import urlparse
+import feedparser
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,55 @@ def is_official_source_domain(domain):
         "india.gov.in",
     }
     return domain in official_domains or domain.endswith(official_suffixes)
+
+
+def _clean_summary_text(raw_html):
+    text = re.sub(r"<[^>]+>", " ", raw_html or "", flags=re.IGNORECASE)
+    text = html.unescape(text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def fetch_google_news_rss_sources(query, max_items=5, max_chars=3000):
+    """Build lightweight source context directly from Google News RSS entries."""
+    query = (query or "").strip()
+    if not query:
+        return []
+
+    try:
+        import urllib.parse
+        encoded = urllib.parse.quote(query)
+        rss_url = f"https://news.google.com/rss/search?q={encoded}&hl=en-IN&gl=IN&ceid=IN:en"
+        feed = feedparser.parse(rss_url)
+    except Exception as e:
+        logger.warning(f"Google News RSS fallback failed for '{query}': {e}")
+        return []
+
+    sources = []
+    seen = set()
+    for entry in (feed.entries or [])[: max_items * 2]:
+        source = entry.get("source") or {}
+        source_href = (source.get("href") or "").strip()
+        source_title = (source.get("title") or "").strip()
+        domain = urlparse(source_href).netloc.replace("www.", "") if source_href else ""
+        title = (entry.get("title") or "").strip()
+        summary = _clean_summary_text(entry.get("summary", ""))
+        text = f"{title}. {summary}".strip()
+        source_key = (domain or source_title or title).lower()
+        if not text or len(text) < 80 or source_key in seen:
+            continue
+        seen.add(source_key)
+        sources.append({
+            "title": title,
+            "text": text[:max_chars],
+            "source_domain": domain or source_title or "google_news_rss",
+            "url": source_href or entry.get("link", ""),
+            "method": "google_news_rss",
+            "is_official": is_official_source_domain(domain),
+        })
+        if len(sources) >= max_items:
+            break
+    return sources
 
 
 def fetch_article_text(url, max_chars=3000):

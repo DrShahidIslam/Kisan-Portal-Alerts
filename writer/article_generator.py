@@ -9,7 +9,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
-from writer.source_fetcher import fetch_multiple_sources
+from writer.source_fetcher import fetch_multiple_sources, fetch_google_news_rss_sources
 from writer.seo_prompt import build_article_prompt, get_category_for_topic, build_image_alt_text, infer_content_template
 from detection.scheme_registry import find_best_scheme
 from detection.language_router import normalize_lang
@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 OFFICIAL_SOURCE_SUFFIXES = (".gov.in", ".nic.in", ".gov", ".edu", ".ac.in")
+
+
+def _set_failure_reason(topic, reason):
+    if isinstance(topic, dict):
+        topic["_generation_failure"] = reason
 
 
 def _is_official_domain(domain):
@@ -43,6 +48,22 @@ def _summarize_source_quality(source_texts):
         "source_count": len(domains),
         "official_count": len(official_domains),
     }
+
+
+def _merge_source_texts(primary_sources, fallback_sources, max_sources=10):
+    merged = []
+    seen = set()
+    for src in (primary_sources or []) + (fallback_sources or []):
+        domain = (src.get("source_domain") or "").strip().lower()
+        title = (src.get("title") or "").strip().lower()
+        key = (domain, title)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(src)
+        if len(merged) >= max_sources:
+            break
+    return merged
 
 
 def _derive_focus_keyword(topic_title, matched_keyword="", content_angle=""):
@@ -242,6 +263,7 @@ def generate_article(topic, source_urls=None):
 
     logger.info(f"Fetching {len(source_urls)} source URLs...")
     source_texts = fetch_multiple_sources(source_urls, max_sources=8)
+    rss_fallback_sources = []
 
     if len(_summarize_source_quality(source_texts).get("source_domains", [])) < 2:
         keyword = topic.get("matched_keyword") or topic.get("topic", "").replace("Rising search:", "").strip()
@@ -251,6 +273,9 @@ def generate_article(topic, source_urls=None):
         if extra_urls:
             source_urls.extend(extra_urls)
             source_texts = fetch_multiple_sources(source_urls, max_sources=10)
+        for query in research_queries[:4]:
+            rss_fallback_sources.extend(fetch_google_news_rss_sources(query, max_items=3))
+        source_texts = _merge_source_texts(source_texts, rss_fallback_sources, max_sources=10)
 
     if not source_texts:
         logger.warning("No source material could be extracted. Using topic summary only.")
@@ -279,12 +304,15 @@ def generate_article(topic, source_urls=None):
     )
     if is_summary_only:
         logger.warning("Skipping generation because only aggregated summary text is available.")
+        _set_failure_reason(topic, "Only thin summary text was available after source expansion.")
         return None
     if source_quality["source_count"] < 1:
         logger.warning("Skipping generation because no usable source domain was available.")
+        _set_failure_reason(topic, "No usable source pages could be extracted for this topic.")
         return None
     if is_news_like and source_quality["official_count"] < 1:
         logger.warning("Skipping generation for news-like topic because no official source was found.")
+        _set_failure_reason(topic, "This news-style topic did not have an official source, so generation was skipped.")
         return None
 
     target_lang = normalize_lang(topic.get("lang", "en"))
@@ -299,6 +327,7 @@ def generate_article(topic, source_urls=None):
         )
     except Exception as e:
         logger.error(f"Failed to build prompt: {e}")
+        _set_failure_reason(topic, f"Prompt build failed: {e}")
         return None
 
     try:
@@ -307,9 +336,11 @@ def generate_article(topic, source_urls=None):
         raw_output = (getattr(response, "text", None) or "").strip()
         if not raw_output:
             logger.error("Gemini returned empty or blocked content (no text).")
+            _set_failure_reason(topic, "Gemini returned empty or blocked content.")
             return None
     except Exception as e:
         logger.error(f"Gemini API error: {e}")
+        _set_failure_reason(topic, f"Gemini API error: {e}")
         return None
 
     article = _parse_article_output(
@@ -321,10 +352,12 @@ def generate_article(topic, source_urls=None):
 
     if not article:
         logger.error("Failed to parse Gemini output.")
+        _set_failure_reason(topic, "Gemini returned output, but it could not be parsed.")
         return None
 
     if len(article.get("content", "") or "") < 100:
         logger.warning("Parsed content too short; treating as parse failure.")
+        _set_failure_reason(topic, "Generated content was too short after parsing.")
         return None
 
     article["sources_used"] = [s.get("source_domain", "") for s in source_texts]

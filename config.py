@@ -201,6 +201,14 @@ EXCLUDE_KEYWORDS = [
     "crypto", "bitcoin",
 ]
 
+# Topics that are technically news but usually low-value for a farmer-help site unless strongly tied to schemes,
+# crops, procurement, subsidies, or farmer action.
+LOW_VALUE_POLICY_TERMS = [
+    "wto", "mc14", "telecom", "cctv", "digital security", "cybersecurity",
+    "global initiative", "trade rules", "trade policy", "diplomacy",
+    "geopolitics", "summit", "tariff", "sanctions", "strategic affairs",
+]
+
 # Combined master list for filtering
 ALL_KEYWORDS = CENTRAL_SCHEMES + STATE_SCHEMES + GENERAL_AGRI_KEYWORDS
 

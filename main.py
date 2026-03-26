@@ -626,9 +626,10 @@ def _handle_write_article(topic_hash=None):
             else:
                 send_simple_message("ðŸ–¼ï¸ Image skipped (SKIP_AI_IMAGE=enabled). You can approve the article without a featured image.")
         else:
+            failure_reason = topic.get("_generation_failure") or "Gemini returned empty or output could not be parsed."
             send_simple_message(
-                "âŒ Article generation failed (Gemini returned empty or output could not be parsed). "
-                "Check agent logs for details or try again."
+                f"âŒ Article generation failed.\nReason: {failure_reason}\n\n"
+                "Check agent logs for details or try another topic."
             )
     except Exception as e:
         error_str = str(e)

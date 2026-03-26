@@ -27,6 +27,11 @@ HIGH_INTENT_TERMS = (
     "installment", "kist", "status", "ekyc", "eligibility", "last date",
     "deadline", "apply", "registration", "beneficiary"
 )
+FARMER_VALUE_TERMS = (
+    "farmer", "farmers", "kisan", "scheme", "yojana", "subsidy", "payment", "installment",
+    "status", "beneficiary", "eligibility", "apply", "registration", "crop", "mandi",
+    "procurement", "msp", "pm kisan", "pmfby", "kcc", "enam", "e-panta", "rythu", "pm kusum"
+)
 
 
 def _cluster_stories(stories):
@@ -140,6 +145,17 @@ def _is_excluded(text):
     return False
 
 
+def _is_low_value_policy_story(story):
+    text = f"{story.get('title', '')} {story.get('summary', '')}".lower()
+    low_value_terms = getattr(config, "LOW_VALUE_POLICY_TERMS", [])
+    if not any(term in text for term in low_value_terms):
+        return False
+    if any(term in text for term in FARMER_VALUE_TERMS):
+        return False
+    scheme = find_best_scheme(text)
+    return scheme is None
+
+
 def _suggest_article_title(cluster_stories):
     import re
     combined = " ".join(s.get("title", "") + " " + s.get("summary", "") for s in cluster_stories)
@@ -207,7 +223,7 @@ def detect_spikes(all_stories, trends_data=None):
     for story in combined:
         title = story.get("title", "")
         keyword = story.get("matched_keyword", "")
-        if _is_excluded(title) or _is_excluded(keyword):
+        if _is_excluded(title) or _is_excluded(keyword) or _is_low_value_policy_story(story):
             excluded_count += 1
             continue
         filtered.append(story)
