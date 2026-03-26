@@ -223,6 +223,56 @@ TEMPLATE_LABELS = {
 }
 
 
+def get_required_sections(template_name, primary_keyword):
+    primary_keyword = (primary_keyword or "this scheme").strip()
+    sections = {
+        "installment_update": [
+            f"{primary_keyword} installment date",
+            "who will get payment",
+            "how to check status",
+            "why payment may be delayed",
+            "what to do next",
+        ],
+        "ekyc_update": [
+            f"{primary_keyword} eKYC last date",
+            "how to complete eKYC",
+            "documents required",
+            "common eKYC problems",
+            "what happens if eKYC is incomplete",
+        ],
+        "status_check": [
+            f"how to check {primary_keyword} status",
+            "official portal",
+            "step by step status check",
+            "what status messages mean",
+            "what to do if status is pending",
+        ],
+        "eligibility_guide": [
+            f"{primary_keyword} eligibility",
+            "who can apply",
+            "who cannot apply",
+            "documents required",
+            "how to apply",
+            "mistakes to avoid",
+        ],
+        "breaking_news": [
+            "what changed",
+            "who is affected",
+            "official source details",
+            "what this means for farmers",
+            "what to do next",
+        ],
+        "generic_guide": [
+            "what this scheme is",
+            "eligibility",
+            "documents required",
+            "how to apply",
+            "next steps for farmers",
+        ],
+    }
+    return sections.get(template_name, sections["generic_guide"])
+
+
 def get_template_rules(template_name, primary_keyword):
     rules = {
         "installment_update": f"""
@@ -312,6 +362,53 @@ def build_image_alt_text(topic_title, focus_keyword="", category=""):
     return "Indian agriculture featured image"
 
 
+def _derive_keyword_plan(topic_title, matched_keyword="", content_angle=""):
+    primary = (matched_keyword or topic_title or "").strip()
+    angle = (content_angle or "").strip().lower()
+    secondary = []
+    supporting = []
+
+    def add_unique(bucket, value):
+        value = (value or "").strip()
+        if value and value.lower() not in {item.lower() for item in bucket}:
+            bucket.append(value)
+
+    for item in [
+        f"{primary} status check",
+        f"{primary} eligibility",
+        f"{primary} documents required",
+        f"{primary} official website",
+    ]:
+        add_unique(secondary, item)
+
+    if "installment" in angle or "payment" in angle:
+        for item in [f"{primary} installment date", f"{primary} payment status", f"{primary} beneficiary list"]:
+            add_unique(secondary, item)
+        for item in ["release date", "payment issue", "bank details", "beneficiary status"]:
+            add_unique(supporting, item)
+    elif "ekyc" in angle:
+        for item in [f"{primary} eKYC", f"{primary} aadhaar verification", f"{primary} last date"]:
+            add_unique(secondary, item)
+        for item in ["otp problem", "aadhaar seeding", "biometric verification", "portal errors"]:
+            add_unique(supporting, item)
+    elif "eligibility" in angle or "apply" in angle or "documents" in angle:
+        for item in [f"{primary} apply online", f"{primary} registration process", f"{primary} required documents"]:
+            add_unique(secondary, item)
+        for item in ["who can apply", "who cannot apply", "application steps", "required papers"]:
+            add_unique(supporting, item)
+    else:
+        for item in [f"{primary} latest update", f"{primary} farmer guide", f"{primary} official update"]:
+            add_unique(secondary, item)
+        for item in ["what changed", "who is affected", "next steps", "official notification"]:
+            add_unique(supporting, item)
+
+    return {
+        "primary": primary,
+        "secondary": secondary[:6],
+        "supporting": supporting[:8],
+    }
+
+
 def build_article_prompt(topic_title, source_texts, matched_keyword="", target_lang="en", content_angle=""):
     """Build the master SEO prompt for Gemini article generation."""
     sources_block = ""
@@ -330,7 +427,8 @@ def build_article_prompt(topic_title, source_texts, matched_keyword="", target_l
         links_context += f"    - Allowed Anchors: {', '.join(p['anchors'])}\n"
 
     cat_mapping_str = ", ".join(CATEGORY_MAPPING)
-    primary_keyword = (matched_keyword or topic_title).strip()
+    keyword_plan = _derive_keyword_plan(topic_title, matched_keyword, content_angle)
+    primary_keyword = keyword_plan["primary"] or (matched_keyword or topic_title).strip()
 
     lang_labels = {"en": "English", "hi": "Hindi", "te": "Telugu"}
     target_lang = (target_lang or "en").lower()
@@ -340,6 +438,7 @@ def build_article_prompt(topic_title, source_texts, matched_keyword="", target_l
     template_name = infer_content_template(topic_title, content_angle)
     template_label = TEMPLATE_LABELS.get(template_name, "General Scheme Guide")
     template_rules = get_template_rules(template_name, primary_keyword)
+    required_sections = get_required_sections(template_name, primary_keyword)
     language_rules = get_language_rules(target_lang)
 
     prompt = f"""You are a world-class SEO strategist and Indian agriculture journalist for kisanportal.org.
@@ -375,13 +474,15 @@ SEO / AEO / GEO STRATEGY
 
 4. SEO REQUIREMENTS
 - PRIMARY KEYWORD / FOCUS KEYWORD is: "{primary_keyword}".
+- SECONDARY KEYWORDS TO COVER NATURALLY: {", ".join(keyword_plan["secondary"]) or "status check, eligibility, documents required"}.
+- SUPPORTING KEYWORDS / ENTITIES TO WEAVE IN NATURALLY: {", ".join(keyword_plan["supporting"]) or "official website, next steps, eligibility, documents"}.
 - The TITLE must contain the PRIMARY KEYWORD exactly or the closest exact scheme phrase.
 - The SEO_TITLE should be optimized for click-through rate and may be slightly different from the TITLE, but it must still lead with the PRIMARY KEYWORD or closest exact phrase.
 - The META_DESCRIPTION must contain the PRIMARY KEYWORD naturally and include a strong click hook such as latest update, status, installment, last date, amount, eligibility, apply process, documents, or payment update.
 - The first 120 words must include the PRIMARY KEYWORD naturally.
 - The first paragraph must hook the reader by explaining what changed, why it matters now, and what the farmer should do next.
 - Use the PRIMARY KEYWORD naturally in at least one H2 and in the closing guidance.
-- Use 2 to 4 related secondary phrases naturally in the article, such as status check, eligibility, documents required, apply online, payment status, installment date, beneficiary list, or claim status.
+- Cover the main search intent comprehensively with related subtopics, not just repeated phrasing.
 - Keep the article tightly focused on the PRIMARY KEYWORD. Do not drift into broad agriculture commentary.
 
 5. AEO / GEO REQUIREMENTS
@@ -395,10 +496,12 @@ SEO / AEO / GEO STRATEGY
 - Prefer official-source facts when they exist, and label unconfirmed timelines as expected or reported rather than confirmed.
 - Make the article materially distinct from a source summary by adding practical guidance, eligibility clarifications, next steps, or issue-resolution advice for farmers.
 - The article structure must match the selected content template.
+- REQUIRED H2/H3 COVERAGE: include sections that closely match these ideas: {", ".join(required_sections)}.
 - {template_rules}
 
 6. DO NOT DO THIS
 - Do not mention Google Trends, search volume, spike score, or keyword metrics.
+- Do not say the topic is trending, being searched heavily, or popular in searches.
 - Do not write filler introductions.
 - Do not write generic motivational text.
 - Do not invent facts beyond the source material.
@@ -421,20 +524,23 @@ CRITICAL: The article must feel helpful for search users first, then strong enou
 2. SEO_TITLE: 50 to 65 characters. Must begin with the PRIMARY KEYWORD or closest exact phrase. Make it more search-CTR focused than TITLE when useful.
 3. META_DESCRIPTION: 140 to 155 characters. Must contain the PRIMARY KEYWORD naturally and a strong hook.
 4. FOCUS_KEYWORD: A single best long-tail keyword phrase for this article, not a broad word like "agriculture".
-5. IMAGE_ALT: 8 to 16 words describing the featured image naturally with the PRIMARY KEYWORD or closest phrase.
-6. SLUG: 3 to 6 words, lowercase, hyphens only, max 50 chars.
-7. TAGS: Exactly 5 tags, comma-separated.
-8. CATEGORY: ONE slug from: {cat_mapping_str}. Use "news" only if topic does not match a scheme.
-9. LANG: The 2-letter ISO language code of this article's text. Use exactly {target_lang}.
-10. ---CONTENT_START---
+5. SECONDARY_KEYWORDS: 4 to 6 comma-separated phrases closely related to the main intent.
+6. SUPPORTING_KEYWORDS: 4 to 8 comma-separated supporting phrases, entities, or user subtopics.
+7. IMAGE_ALT: 8 to 16 words describing the featured image naturally with the PRIMARY KEYWORD or closest phrase.
+8. SLUG: 3 to 6 words, lowercase, hyphens only, max 50 chars.
+9. TAGS: Exactly 5 tags, comma-separated.
+10. CATEGORY: ONE slug from: {cat_mapping_str}. Use "news" only if topic does not match a scheme.
+11. LANG: The 2-letter ISO language code of this article's text. Use exactly {target_lang}.
+12. ---CONTENT_START---
 - Start with a short direct-answer intro of 2 to 4 sentences.
 - Follow with well-structured H2/H3 sections that match the selected template.
 - Add at least 2 bullet lists where useful.
+- Add comprehensive coverage of the primary intent, the main related questions, and practical next actions.
 - If the topic is news-driven, include one short "What this means for farmers" or "Kisan Portal analysis" section with practical interpretation.
 - Include a short FAQ section at the end with 4 to 6 real questions farmers may ask.
 - Keep the tone practical, trustworthy, and easy to understand.
-11. ---CONTENT_END---
-12. ---FAQ_START---
+13. ---CONTENT_END---
+14. ---FAQ_START---
 REQUIRED: Output FAQPage JSON-LD schema with 3 to 4 real questions and real answers.
 <script type="application/ld+json">
 {{
@@ -447,13 +553,15 @@ REQUIRED: Output FAQPage JSON-LD schema with 3 to 4 real questions and real answ
   ]
 }}
 </script>
-13. ---FAQ_END---
+15. ---FAQ_END---
 
 Return ONLY this exact structure:
 TITLE: ...
 SEO_TITLE: ...
 META_DESCRIPTION: ...
 FOCUS_KEYWORD: ...
+SECONDARY_KEYWORDS: kw1, kw2, kw3, kw4
+SUPPORTING_KEYWORDS: kw1, kw2, kw3, kw4
 IMAGE_ALT: ...
 SLUG: ...
 TAGS: tag1, tag2, tag3, tag4, tag5

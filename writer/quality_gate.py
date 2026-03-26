@@ -2,11 +2,22 @@
 Quality gate checks before publishing articles.
 """
 import re
+from writer.seo_prompt import get_required_sections
 
 
 GENERIC_KEYWORDS = {
     "agriculture", "farming", "farmers", "scheme", "schemes", "news", "india", "kisan"
 }
+
+TREND_TALK_PATTERNS = (
+    r"google trends",
+    r"trending on google",
+    r"rising search",
+    r"search volume",
+    r"searched a lot",
+    r"people are searching",
+    r"popular in searches",
+)
 
 
 def _normalize_text(value):
@@ -50,6 +61,10 @@ def validate_article_for_publish(article, min_words=700):
     source_count = int(source_quality.get("source_count") or 0)
     official_count = int(source_quality.get("official_count") or 0)
     source_domains = source_quality.get("source_domains") or []
+    keyword_plan = article.get("keyword_plan") or {}
+    secondary_keywords = article.get("secondary_keywords") or keyword_plan.get("secondary") or []
+    supporting_keywords = article.get("supporting_keywords") or keyword_plan.get("supporting") or []
+    template_name = article.get("template_name") or "generic_guide"
 
     normalized_keyword = _normalize_text(focus_keyword)
     normalized_title = _normalize_text(title)
@@ -78,9 +93,6 @@ def validate_article_for_publish(article, min_words=700):
 
     if len(words) < min_words:
         issues.append(f"Article is thin ({len(words)} words); needs at least {min_words} words")
-
-    if source_count < 2:
-        issues.append("Source coverage is too thin; require at least 2 distinct source domains")
 
     internal_links = len(re.findall(r'<a\s+[^>]*href="https://kisanportal\.org/', full_content, flags=re.IGNORECASE))
     if internal_links < 2:
@@ -132,6 +144,11 @@ def validate_article_for_publish(article, min_words=700):
         category == "news" or
         any(token in normalized_keyword for token in ["latest update", "news", "announcement", "released", "deadline"])
     )
+    if source_count < 2:
+        if is_news_like:
+            issues.append("Source coverage is too thin for a news-style article; require at least 2 distinct source domains")
+        else:
+            warnings.append("Source coverage is thin; enrich with more supporting sources if available")
     if is_news_like and official_count < 1:
         issues.append("News-style article is missing an official source")
 
@@ -141,9 +158,34 @@ def validate_article_for_publish(article, min_words=700):
     if re.search(r"official source|official website|official notification|official portal", normalized_content) is None and official_count > 0:
         warnings.append("Article uses official sources but does not clearly surface that context for readers")
 
-    duplicate_domains = len(set(source_domains)) if source_domains else 0
-    if duplicate_domains and duplicate_domains < source_count:
-        warnings.append("Source list appears repetitive; try to diversify inputs before publishing")
+    trend_talk = any(re.search(pattern, normalized_content) for pattern in TREND_TALK_PATTERNS)
+    if trend_talk:
+        issues.append("Article mentions search/trend metrics instead of focusing on user value")
+
+    if len(secondary_keywords) < 3:
+        warnings.append("Keyword plan is weak; include at least 3 strong secondary keywords")
+    else:
+        covered_secondary = sum(1 for kw in secondary_keywords if _normalize_text(kw) in normalized_content)
+        if covered_secondary < min(3, len(secondary_keywords)):
+            warnings.append("Secondary keyword coverage is weak across the article body")
+
+    if len(supporting_keywords) < 3:
+        warnings.append("Supporting keyword plan is thin; broaden related subtopics")
+    else:
+        covered_supporting = sum(1 for kw in supporting_keywords if _normalize_text(kw) in normalized_content)
+        if covered_supporting < min(2, len(supporting_keywords)):
+            warnings.append("Supporting subtopics are not covered deeply enough in the article")
+
+    required_sections = get_required_sections(template_name, focus_keyword or article.get("title", ""))
+    covered_sections = 0
+    for section in required_sections:
+        section_tokens = [tok for tok in _normalize_text(section).split() if len(tok) > 2]
+        if not section_tokens:
+            continue
+        if sum(1 for tok in section_tokens if tok in normalized_content) >= max(1, min(2, len(section_tokens))):
+            covered_sections += 1
+    if covered_sections < max(3, len(required_sections) - 1):
+        warnings.append("Article structure does not fully cover the required intent blueprint")
 
     if "FAQPage" not in full_content:
         warnings.append("FAQ schema missing; rich result chance reduced")
@@ -164,4 +206,8 @@ def validate_article_for_publish(article, min_words=700):
         "image_alt": image_alt,
         "source_count": source_count,
         "official_source_count": official_count,
+        "secondary_keyword_count": len(secondary_keywords),
+        "supporting_keyword_count": len(supporting_keywords),
+        "template_name": template_name,
+        "blueprint_sections_covered": covered_sections,
     }

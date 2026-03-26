@@ -406,9 +406,9 @@ REQUIRE_ARTICLE_CONFIRMATION = True # Ask for confirmation before starting artic
 # â”€â”€ Google Trends Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 TRENDS_GEO = "IN"               # India (Crucial to avoid US trends)
 TRENDS_KEYWORDS_PER_BATCH = 5   # pytrends allows max 5 keywords per request
-TRENDS_KEYWORDS_PER_CYCLE = 25  # Rotating keyword coverage per scan
-TRENDS_KEYWORDS_MAX = 60        # Total candidate registry keywords for trend checks
-NEWSAPI_ROTATING_QUERY_COUNT = 10  # Rotating scheme queries per scan (keeps API usage controlled)
+TRENDS_KEYWORDS_PER_CYCLE = 40  # Rotating keyword coverage per scan
+TRENDS_KEYWORDS_MAX = 120       # Total candidate registry keywords for trend checks
+NEWSAPI_ROTATING_QUERY_COUNT = 18  # Rotating scheme queries per scan (keeps API usage controlled)
 
 # â”€â”€ WordPress Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 WP_DEFAULT_CATEGORY = "Uncategorized"

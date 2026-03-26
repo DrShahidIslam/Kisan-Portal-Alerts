@@ -188,15 +188,16 @@ def detect_spikes(all_stories, trends_data=None):
     if trends_data:
         for trend in trends_data:
             if trend.get("is_rising"):
+                trend_keyword = (trend["keyword"] or "").strip()
                 combined.append({
-                    "title": f"Rising search: {trend['keyword']}",
-                    "summary": f"Google Trends shows '{trend['keyword']}' rising ({trend.get('spike_ratio', 0)}x)",
-                    "url": f"https://trends.google.com/trends/explore?q={trend['keyword'].replace(' ', '+')}",
+                    "title": trend_keyword,
+                    "summary": f"Fresh interest signal detected for {trend_keyword}",
+                    "url": f"https://trends.google.com/trends/explore?q={trend_keyword.replace(' ', '+')}",
                     "source": trend.get("source", "Google Trends"),
                     "source_type": "trends",
-                    "matched_keyword": trend["keyword"],
+                    "matched_keyword": trend_keyword,
                     "published_at": trend.get("recorded_at", datetime.utcnow()),
-                    "story_hash": hashlib.sha256(trend["keyword"].encode()).hexdigest()[:16],
+                    "story_hash": hashlib.sha256(trend_keyword.encode()).hexdigest()[:16],
                     "is_rising": True,
                     "spike_ratio": trend.get("spike_ratio", 0),
                 })

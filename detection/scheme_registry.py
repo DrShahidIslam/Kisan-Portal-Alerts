@@ -136,10 +136,24 @@ def get_registry():
 
 def get_trends_keywords(limit=40):
     rows = sorted(SCHEME_REGISTRY, key=lambda x: x.get("priority", 0), reverse=True)
+    intent_suffixes = [
+        "status check",
+        "eligibility",
+        "how to apply",
+        "last date",
+        "payment status",
+        "beneficiary list",
+        "required documents",
+        "ekyc",
+    ]
     out = []
     for row in rows:
         out.append(row["name"])
         out.extend(row.get("aliases", []))
+        if row.get("priority", 0) >= 6:
+            seed_name = row["name"].strip()
+            for suffix in intent_suffixes:
+                out.append(f"{seed_name} {suffix}")
     dedup = []
     seen = set()
     for kw in out:
