@@ -17,6 +17,33 @@ from gemini_client import generate_content_with_fallback
 logger = logging.getLogger(__name__)
 
 
+OFFICIAL_SOURCE_SUFFIXES = (".gov.in", ".nic.in", ".gov", ".edu", ".ac.in")
+
+
+def _is_official_domain(domain):
+    domain = (domain or "").lower().strip()
+    return bool(domain) and domain.endswith(OFFICIAL_SOURCE_SUFFIXES)
+
+
+def _summarize_source_quality(source_texts):
+    domains = []
+    official_domains = []
+    for src in source_texts or []:
+        domain = (src.get("source_domain") or "").strip().lower()
+        if not domain:
+            continue
+        if domain not in domains:
+            domains.append(domain)
+        if (src.get("is_official") or _is_official_domain(domain)) and domain not in official_domains:
+            official_domains.append(domain)
+    return {
+        "source_domains": domains,
+        "official_domains": official_domains,
+        "source_count": len(domains),
+        "official_count": len(official_domains),
+    }
+
+
 def _derive_focus_keyword(topic_title, matched_keyword="", content_angle=""):
     """Turn a broad scheme/topic name into a stronger long-tail focus keyword."""
     topic_title = (topic_title or "").strip()
@@ -117,7 +144,29 @@ def generate_article(topic, source_urls=None):
             "text": "\n".join(s.get("summary", "") for s in topic.get("stories", [])),
             "source_domain": "aggregated_summaries",
             "url": "",
+            "is_official": False,
         }]
+
+    source_quality = _summarize_source_quality(source_texts)
+    content_angle = (topic.get("content_angle") or "").strip().lower()
+    topic_title_lower = (topic.get("topic") or "").strip().lower()
+    is_news_like = any(token in f"{content_angle} {topic_title_lower}" for token in [
+        "breaking", "news", "announcement", "released", "latest update", "deadline"
+    ])
+    is_summary_only = (
+        len(source_texts) == 1 and
+        source_texts[0].get("source_domain") == "aggregated_summaries" and
+        not source_texts[0].get("url")
+    )
+    if is_summary_only:
+        logger.warning("Skipping generation because only aggregated summary text is available.")
+        return None
+    if source_quality["source_count"] < 2:
+        logger.warning("Skipping generation because fewer than 2 distinct source domains were available.")
+        return None
+    if is_news_like and source_quality["official_count"] < 1:
+        logger.warning("Skipping generation for news-like topic because no official source was found.")
+        return None
 
     target_lang = normalize_lang(topic.get("lang", "en"))
 
@@ -160,6 +209,8 @@ def generate_article(topic, source_urls=None):
         return None
 
     article["sources_used"] = [s.get("source_domain", "") for s in source_texts]
+    article["source_quality"] = source_quality
+    article["has_official_source"] = source_quality["official_count"] > 0
     article["word_count"] = len(article.get("content_html", "").split())
     article["category"] = get_category_for_topic(topic.get("topic", ""), topic.get("matched_keyword", ""))
     article["focus_keyword"] = (

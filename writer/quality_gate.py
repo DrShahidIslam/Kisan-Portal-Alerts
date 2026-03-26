@@ -46,6 +46,10 @@ def validate_article_for_publish(article, min_words=700):
     intro_text = " ".join(words[:120])
     focus_keyword = (article.get("focus_keyword") or article.get("matched_keyword") or article.get("title") or "").strip()
     category = (article.get("category") or "").strip().lower()
+    source_quality = article.get("source_quality") or {}
+    source_count = int(source_quality.get("source_count") or 0)
+    official_count = int(source_quality.get("official_count") or 0)
+    source_domains = source_quality.get("source_domains") or []
 
     normalized_keyword = _normalize_text(focus_keyword)
     normalized_title = _normalize_text(title)
@@ -74,6 +78,9 @@ def validate_article_for_publish(article, min_words=700):
 
     if len(words) < min_words:
         issues.append(f"Article is thin ({len(words)} words); needs at least {min_words} words")
+
+    if source_count < 2:
+        issues.append("Source coverage is too thin; require at least 2 distinct source domains")
 
     internal_links = len(re.findall(r'<a\s+[^>]*href="https://kisanportal\.org/', full_content, flags=re.IGNORECASE))
     if internal_links < 2:
@@ -121,8 +128,22 @@ def validate_article_for_publish(article, min_words=700):
     if category == "news" and any(token in normalized_keyword for token in ["status", "eligibility", "apply", "documents", "ekyc", "installment"]):
         warnings.append("This looks like a scheme-intent article but is categorized as news")
 
+    is_news_like = (
+        category == "news" or
+        any(token in normalized_keyword for token in ["latest update", "news", "announcement", "released", "deadline"])
+    )
+    if is_news_like and official_count < 1:
+        issues.append("News-style article is missing an official source")
+
     if re.search(r'what this means for farmers|kisan portal analysis', normalized_content) is None and any(token in normalized_keyword for token in ["latest update", "news", "announcement"]):
         warnings.append("News article is missing a value-add analysis section")
+
+    if re.search(r"official source|official website|official notification|official portal", normalized_content) is None and official_count > 0:
+        warnings.append("Article uses official sources but does not clearly surface that context for readers")
+
+    duplicate_domains = len(set(source_domains)) if source_domains else 0
+    if duplicate_domains and duplicate_domains < source_count:
+        warnings.append("Source list appears repetitive; try to diversify inputs before publishing")
 
     if "FAQPage" not in full_content:
         warnings.append("FAQ schema missing; rich result chance reduced")
@@ -141,4 +162,6 @@ def validate_article_for_publish(article, min_words=700):
         "keyword_density": round(density, 2),
         "seo_title": seo_title,
         "image_alt": image_alt,
+        "source_count": source_count,
+        "official_source_count": official_count,
     }

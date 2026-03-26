@@ -24,6 +24,22 @@ HEADERS = {
 }
 
 
+def is_official_source_domain(domain):
+    """Heuristic for government or official institutional source domains."""
+    domain = (domain or "").lower().strip()
+    if not domain:
+        return False
+    official_suffixes = (".gov.in", ".nic.in", ".gov", ".edu", ".ac.in")
+    official_domains = {
+        "pib.gov.in",
+        "pmkisan.gov.in",
+        "agricoop.gov.in",
+        "farmer.gov.in",
+        "india.gov.in",
+    }
+    return domain in official_domains or domain.endswith(official_suffixes)
+
+
 def fetch_article_text(url, max_chars=3000):
     """
     Fetch and extract clean text from a news article URL.
@@ -59,6 +75,7 @@ def fetch_article_text(url, max_chars=3000):
                     "source_domain": domain,
                     "url": url,
                     "method": "trafilatura",
+                    "is_official": is_official_source_domain(domain),
                 }
     except ImportError:
         logger.debug("trafilatura not installed, trying fallback")
@@ -97,6 +114,7 @@ def fetch_article_text(url, max_chars=3000):
                 "source_domain": domain,
                 "url": url,
                 "method": "fallback_regex",
+                "is_official": is_official_source_domain(domain),
             }
 
     except Exception as e:

@@ -316,8 +316,9 @@ def build_article_prompt(topic_title, source_texts, matched_keyword="", target_l
     """Build the master SEO prompt for Gemini article generation."""
     sources_block = ""
     for i, src in enumerate(source_texts[:5], 1):
+        source_label = "official" if src.get("is_official") else "secondary"
         sources_block += f"""
---- SOURCE {i} ({src.get('source_domain', 'Unknown')}) ---
+--- SOURCE {i} ({src.get('source_domain', 'Unknown')} | {source_label}) ---
 {src.get('text', '')[:2000]}
 """
 
@@ -390,6 +391,9 @@ SEO / AEO / GEO STRATEGY
 - Use short paragraphs, bullets, and step-based explanations so the article is easy to scan.
 - If the topic is a fresh update, clearly mark what is new and what remains unchanged.
 - If this is a news-led topic, include one short original analysis paragraph under a heading like "What this means for farmers" or "Kisan Portal analysis". This paragraph must add value through practical interpretation, not unsupported opinion.
+- Base every factual claim on the supplied sources. If the sources disagree or do not confirm a detail, say that clearly instead of guessing.
+- Prefer official-source facts when they exist, and label unconfirmed timelines as expected or reported rather than confirmed.
+- Make the article materially distinct from a source summary by adding practical guidance, eligibility clarifications, next steps, or issue-resolution advice for farmers.
 - The article structure must match the selected content template.
 - {template_rules}
 
@@ -399,6 +403,8 @@ SEO / AEO / GEO STRATEGY
 - Do not write generic motivational text.
 - Do not invent facts beyond the source material.
 - Do not stuff keywords unnaturally.
+- Do not paraphrase the source material section-by-section without adding useful interpretation.
+- Do not present assumptions, rumors, or stale dates as official confirmation.
 
 7. HTML FORMATTING
 - Use ## for H2 headers and ### for H3 headers.
